@@ -1,16 +1,23 @@
 {
-  "name": "fighter-tactical-launch.game",
+  "name": "fighter-tactical-launch-game-v2",
   "version": "1.0.0",
-  "description": "",
+  "description": "A simple game project using Node.js and Express.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "game",
+    "node.js",
+    "express"
+  ],
+  "author": "YourNameHere",
   "license": "ISC",
   "dependencies": {
     "express": "^4.19.2"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
