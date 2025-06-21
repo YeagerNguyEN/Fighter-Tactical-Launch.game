@@ -84,15 +84,6 @@ function generateRandomPlaceBoard() {
       DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
     const shape = getRotatedShape(randomDirection);
 
-    // Try to place the plane with its head at (randomRow, randomCol)
-    // The canPlacePlane function needs to check relative to the head's position
-    // The head's relative position (0,0) in shape maps to (randomRow, randomCol)
-    const headX = shape[0][0]; // Relative x of head in shape
-    const headY = shape[0][1]; // Relative y of head in shape
-
-    // Calculate the actual top-left corner of the plane's bounding box
-    // (This is a simplified approach, direct canPlacePlane check is more robust)
-    // The canPlacePlane is correctly checking relative to the head position (randomRow, randomCol)
     if (canPlacePlane(board, randomRow, randomCol, shape)) {
       placePlaneOnBoard(board, randomRow, randomCol, shape);
       planesPlaced++;
@@ -201,9 +192,13 @@ io.on("connection", (socket) => {
       id: p.id,
       playerIndex: p.playerIndex,
     }));
-    io.to(roomCode).emit("gameStart", { players: playerInfo });
+    // --- Cập nhật ở đây: Gửi roomCode lại cho client ---
+    io.to(roomCode).emit("gameStart", {
+      players: playerInfo,
+      roomCode: roomCode,
+    });
     console.log(
-      `[Server] Phòng ${roomCode}: Trò chơi bắt đầu (giai đoạn đặt).`
+      `[Server] Phòng ${roomCode}: Trò chơi bắt đầu (giai đoạn đặt). Gửi roomCode cho client.`
     );
 
     io.to(roomCode).emit("placementTimerStarted", PLACEMENT_TIME_LIMIT);
@@ -251,7 +246,7 @@ io.on("connection", (socket) => {
       return socket.emit("error", `Bạn phải đặt đúng 3 máy bay.`);
     }
 
-    player.placeBoard = placeBoard; // Đặt placeBoard của người chơi
+    player.placeBoard = placeBoard;
     player.ready = true;
     console.log(
       `[Server] Phòng ${roomCode}: Người chơi ${player.playerIndex} đã sẵn sàng. ready: ${player.ready}`
@@ -298,7 +293,7 @@ io.on("connection", (socket) => {
           shooter ? shooter.playerIndex : "N/A"
         }).`
       );
-      return; // Không phải lượt của bạn
+      return;
     }
 
     const targetPlayer = room.players.find((p) => p.id !== socket.id);
@@ -309,12 +304,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // This check is now less likely to be hit, thanks to random board generation for unready players
     if (!targetPlayer.placeBoard) {
       console.error(
         `[Server] CRITICAL ERROR: Target player (${targetPlayer.id}) placeBoard is NULL at SHOOT phase! This should not happen.`
       );
-      socket.emit("error", "Lỗi nội bộ server: Bảng đối thủ không hợp lệ."); // Gửi thông báo lỗi cho người bắn
+      socket.emit("error", "Lỗi nội bộ server: Bảng đối thủ không hợp lệ.");
       return;
     }
 
@@ -327,7 +321,7 @@ io.on("connection", (socket) => {
       console.log(
         `[Server] Shoot failed for ${socket.id}: Cell [${row}, ${col}] already shot.`
       );
-      return; // Ô này đã được bắn, không xử lý
+      return;
     }
 
     let result = "M"; // Miss (Trượt)
@@ -337,7 +331,7 @@ io.on("connection", (socket) => {
       result = "I"; // Hit Body (Trúng thân)
     }
 
-    targetPlayer.placeBoard[row][col] = result; // Cập nhật trạng thái trên bàn cờ của server
+    targetPlayer.placeBoard[row][col] = result;
     console.log(
       `[Server] Shot result for ${socket.id} at [${row}, ${col}]: ${result}.`
     );
@@ -378,7 +372,6 @@ io.on("connection", (socket) => {
     console.log(`[Server] Người dùng đã ngắt kết nối: ${socket.id}`);
     for (const roomCode in rooms) {
       const room = rooms[roomCode];
-      // Kiểm tra nếu phòng tồn tại và người chơi có trong phòng
       if (room && room.players) {
         const playerIndex = room.players.findIndex((p) => p.id === socket.id);
 
@@ -394,7 +387,7 @@ io.on("connection", (socket) => {
               `[Server] Phòng ${roomCode}: Đã xóa placement timer do người chơi thoát.`
             );
           }
-          delete rooms[roomCode]; // Xóa phòng khi một người chơi thoát
+          delete rooms[roomCode];
           console.log(`[Server] Đã xóa phòng ${roomCode} do người chơi thoát.`);
           break;
         }

@@ -85,7 +85,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("roomCreated", (roomCode) => {
-    state.roomCode = roomCode;
+    state.roomCode = roomCode; // Player 0's roomCode is set here
     state.playerIndex = 0;
     dom.roomCodeDisplay.textContent = `Mã phòng: ${roomCode}. Đang chờ đối thủ...`;
     console.log(
@@ -93,10 +93,12 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   });
 
-  socket.on("gameStart", () => {
+  socket.on("gameStart", (data) => {
+    // Receive data object with roomCode
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
     state.phase = "PLACE";
+    state.roomCode = data.roomCode; // --- FIX: Set roomCode for joining player ---
     initGameBoards();
     updateUI();
     console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
@@ -338,7 +340,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("newTurn", (turnIndex) => {
-    // This is the SOLE source of truth for 'isMyTurn'
     state.isMyTurn = state.playerIndex === turnIndex;
     updateUI();
     console.log(
@@ -450,22 +451,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const val = boardData[r][c];
 
         if (type === "place") {
-          // This is MY board, showing what the opponent shot
           if (val === "H") cell.classList.add("cell-head");
           else if (val === "B") cell.classList.add("cell-placed");
           else if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I")
-            cell.classList.add(
-              "cell-hit-body"
-            ); // Correctly handle 'I' for my board
+          else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
         } else {
-          // This is the OPPONENT'S board, showing my shots
           if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I")
-            cell.classList.add(
-              "cell-hit-body"
-            ); // Correctly handle 'I' for opponent's board
+          else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
         }
       }
@@ -476,16 +469,13 @@ document.addEventListener("DOMContentLoaded", () => {
     renderBoard(dom.myPlaceBoard, state.placeBoard, "place");
     renderBoard(dom.opponentShootBoard, state.shootBoard, "shoot");
 
-    // Controls visibility
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
     dom.readyButton.style.display =
       state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
 
-    // Cursor management for opponent's board (shoot board)
     dom.opponentShootBoard.style.cursor =
       state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "default";
 
-    // Info panel messages
     let infoMessage = "";
     switch (state.phase) {
       case "LOBBY":
@@ -511,7 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateInfo(infoMessage);
 
     console.log(
-      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}`
+      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}, Room Code: ${state.roomCode}`
     );
   }
 
