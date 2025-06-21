@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     rotateButton: document.getElementById("rotate-button"),
     readyButton: document.getElementById("ready-button"),
     controlsArea: document.getElementById("controls-area"),
-    placementTimerDisplay: document.getElementById("placement-timer"), // New DOM element for timer
+    placementTimerDisplay: document.getElementById("placement-timer"),
     transition: {
       overlay: document.getElementById("transition-overlay"),
       title: document.getElementById("transition-title"),
@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- GAME STATE ---
   let state;
-  let placementCountdownInterval = null; // To hold the countdown interval
+  let placementCountdownInterval = null;
 
   function resetGame() {
     state = {
@@ -61,13 +61,11 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.roomCodeDisplay.textContent = "";
     dom.roomCodeInput.value = "";
 
-    // Clear any existing timer when resetting
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
     }
     dom.placementTimerDisplay.classList.add("hidden");
-    // Ensure transition overlay is hidden on full reset
     dom.transition.overlay.classList.add("hidden");
     dom.transition.overlay.classList.remove("flex");
     console.log("[Client] Game state reset to LOBBY.");
@@ -105,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Current client state after gameStart:",
       JSON.parse(JSON.stringify(state))
-    ); // Deep copy for logging
+    );
   });
 
   socket.on("error", (message) => {
@@ -199,7 +197,6 @@ document.addEventListener("DOMContentLoaded", () => {
       roomCode: state.roomCode,
       placeBoard: state.placeBoard,
     });
-    // Clear timer if user readies up before timeout
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -219,10 +216,9 @@ document.addEventListener("DOMContentLoaded", () => {
   dom.transition.button.addEventListener("click", () => {
     console.log("[Client] Transition button clicked. Hiding overlay.");
     dom.transition.overlay.classList.add("hidden");
-    dom.transition.overlay.classList.remove("flex"); // Ensure flex is removed
+    dom.transition.overlay.classList.remove("flex");
     if (state.phase === "GAMEOVER") {
       resetGame();
-      // Using location.reload() for a full reset.
       location.reload();
     }
   });
@@ -288,7 +284,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- SERVER EVENT HANDLERS ---
   socket.on("placementTimerStarted", (timeLimit) => {
-    let timeLeft = Math.ceil(timeLimit / 1000); // Convert ms to seconds, round up
+    let timeLeft = Math.ceil(timeLimit / 1000);
     dom.placementTimerDisplay.classList.remove("hidden");
     dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
 
@@ -322,7 +318,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.on("shootingPhaseStart", () => {
     state.phase = "SHOOT";
-    // Clear the timer if it's still running when phase starts
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -343,6 +338,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("newTurn", (turnIndex) => {
+    // This is the SOLE source of truth for 'isMyTurn'
     state.isMyTurn = state.playerIndex === turnIndex;
     updateUI();
     console.log(
@@ -369,6 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
     updateUI();
+    console.log(`[Client] Processed shotResult. Boards updated.`);
   });
 
   socket.on("gameOver", (winnerIndex) => {
@@ -389,14 +386,14 @@ document.addEventListener("DOMContentLoaded", () => {
         "Bạn đã thắng do đối thủ thoát giữa chừng.",
         "Về Sảnh"
       );
-      state.phase = "GAMEOVER"; // Force game over state
+      state.phase = "GAMEOVER";
     }
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
       dom.placementTimerDisplay.classList.add("hidden");
     }
-    updateUI(); // Update UI to reflect game over state
+    updateUI();
     console.log("[Client] Received 'opponentLeft'.");
   });
 
@@ -453,14 +450,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const val = boardData[r][c];
 
         if (type === "place") {
+          // This is MY board, showing what the opponent shot
           if (val === "H") cell.classList.add("cell-head");
           else if (val === "B") cell.classList.add("cell-placed");
           else if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I") cell.classList.add("cell-hit-body");
+          else if (val === "I")
+            cell.classList.add(
+              "cell-hit-body"
+            ); // Correctly handle 'I' for my board
           else if (val === "M") cell.classList.add("cell-miss");
         } else {
+          // This is the OPPONENT'S board, showing my shots
           if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I") cell.classList.add("cell-hit-body");
+          else if (val === "I")
+            cell.classList.add(
+              "cell-hit-body"
+            ); // Correctly handle 'I' for opponent's board
           else if (val === "M") cell.classList.add("cell-miss");
         }
       }
