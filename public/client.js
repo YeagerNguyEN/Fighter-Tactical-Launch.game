@@ -216,19 +216,16 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   });
 
-  socket.on("shootingPhaseStart", () => {
+  socket.on("startShooting", (startingPlayerIndex) => {
     state.phase = "SHOOT";
+    state.isMyTurn = state.playerIndex === startingPlayerIndex;
     showTransition(
       "Trận Chiến Bắt Đầu!",
-      "Lượt bắn sẽ được quyết định ngay sau đây."
+      `Người chơi ${startingPlayerIndex + 1} sẽ bắn trước.`
     );
     updateUI();
   });
 
-  socket.on("newTurn", (turnIndex) => {
-    state.isMyTurn = state.playerIndex === turnIndex;
-    updateUI();
-  });
   socket.on("shotResult", ({ shooterIndex, row, col, result }) => {
     const isMyShot = shooterIndex === state.playerIndex;
     state.isMyTurn = !isMyShot; // Đổi lượt
