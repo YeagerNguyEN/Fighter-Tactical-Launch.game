@@ -23,19 +23,20 @@ app.get("/", (req, res) => {
 
 const rooms = {};
 const PLACEMENT_TIME_LIMIT = 30000; // 30 giây
+
 const startShootingPhase = (roomCode) => {
   const room = rooms[roomCode];
   if (!room || room.state !== "placing") return;
-
-  // ✅ Chuyển trạng thái NGAY để chặn timeout hoặc gọi lại
-  room.state = "shooting";
 
   if (room.placementTimer) {
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
   }
 
+  room.state = "shooting";
+  // Gửi sự kiện để client biết giai đoạn bắn bắt đầu
   io.to(roomCode).emit("shootingPhaseStart");
+  // Gửi sự kiện lượt chơi đầu tiên
   io.to(roomCode).emit("newTurn", room.currentTurnIndex);
   console.log(
     `Phòng ${roomCode}: Bắt đầu bắn. Lượt của người chơi ${room.currentTurnIndex}.`
