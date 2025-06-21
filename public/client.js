@@ -67,6 +67,9 @@ document.addEventListener("DOMContentLoaded", () => {
       placementCountdownInterval = null;
     }
     dom.placementTimerDisplay.classList.add("hidden");
+    // Ensure transition overlay is hidden on full reset
+    dom.transition.overlay.classList.add("hidden");
+    dom.transition.overlay.classList.remove("flex");
     console.log("[Client] Game state reset to LOBBY.");
   }
 
@@ -99,6 +102,10 @@ document.addEventListener("DOMContentLoaded", () => {
     initGameBoards();
     updateUI();
     console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
+    console.log(
+      "[Client] Current client state after gameStart:",
+      JSON.parse(JSON.stringify(state))
+    ); // Deep copy for logging
   });
 
   socket.on("error", (message) => {
@@ -182,6 +189,9 @@ document.addEventListener("DOMContentLoaded", () => {
   dom.readyButton.addEventListener("click", () => {
     if (state.planesPlaced < PLANES_PER_PLAYER) {
       updateInfo(`Bạn cần đặt đủ ${PLANES_PER_PLAYER} máy bay.`);
+      console.log(
+        `[Client] Ready button clicked but not enough planes placed (${state.planesPlaced}/${PLANES_PER_PLAYER}).`
+      );
       return;
     }
     state.phase = "WAITING";
@@ -200,18 +210,21 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Emitted 'planesPlaced'. Transitioned to WAITING phase."
     );
+    console.log(
+      "[Client] Current client state after planesPlaced:",
+      JSON.parse(JSON.stringify(state))
+    );
   });
 
   dom.transition.button.addEventListener("click", () => {
+    console.log("[Client] Transition button clicked. Hiding overlay.");
     dom.transition.overlay.classList.add("hidden");
     dom.transition.overlay.classList.remove("flex"); // Ensure flex is removed
     if (state.phase === "GAMEOVER") {
       resetGame();
       // Using location.reload() for a full reset.
-      // In a more complex app, you might navigate or clear state without reload.
       location.reload();
     }
-    console.log("[Client] Transition button clicked. Overlay hidden.");
   });
 
   function handleCellClick(e) {
@@ -246,13 +259,15 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
       } else {
         console.log(
-          `[Client] Cell [${r}, ${c}] already shot. Cannot shoot again.`
+          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
         );
       }
     } else if (state.phase === "SHOOT" && !state.isMyTurn) {
-      console.log("[Client] Not your turn to shoot.");
+      console.log("[Client] Cannot shoot: Not your turn.");
     } else if (state.phase !== "SHOOT" && type === "shoot") {
-      console.log("[Client] Not in SHOOT phase yet.");
+      console.log(
+        `[Client] Cannot shoot: Not in SHOOT phase (current phase: ${state.phase}).`
+      );
     }
   }
 
@@ -273,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- SERVER EVENT HANDLERS ---
   socket.on("placementTimerStarted", (timeLimit) => {
-    let timeLeft = timeLimit / 1000; // Convert ms to seconds
+    let timeLeft = Math.ceil(timeLimit / 1000); // Convert ms to seconds, round up
     dom.placementTimerDisplay.classList.remove("hidden");
     dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
 
@@ -321,29 +336,33 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase."
     );
+    console.log(
+      "[Client] Current client state after shootingPhaseStart:",
+      JSON.parse(JSON.stringify(state))
+    );
   });
 
   socket.on("newTurn", (turnIndex) => {
     state.isMyTurn = state.playerIndex === turnIndex;
     updateUI();
     console.log(
-      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player ${state.playerIndex}, Turn Index: ${turnIndex}).`
+      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
+    );
+    console.log(
+      "[Client] Current client state after newTurn:",
+      JSON.parse(JSON.stringify(state))
     );
   });
 
   socket.on("shotResult", ({ shooterIndex, row, col, result }) => {
     const isMyShot = shooterIndex === state.playerIndex;
-    // Turn is swapped by server, so client just updates board
-    // state.isMyTurn is updated by 'newTurn' event that follows this
 
     if (isMyShot) {
-      // It was my shot, update my shoot board
       state.shootBoard[row][col] = result;
       console.log(
         `[Client] My shot at [${row}, ${col}] resulted in: ${result}.`
       );
     } else {
-      // Opponent's shot, update my place board
       state.placeBoard[row][col] = result;
       console.log(
         `[Client] Opponent shot at [${row}, ${col}] resulted in: ${result}.`
@@ -372,7 +391,6 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       state.phase = "GAMEOVER"; // Force game over state
     }
-    // Clear timer if opponent leaves
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -411,7 +429,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateInfo(text) {
     dom.infoPanel.textContent = text;
     dom.infoPanel.classList.remove("fade-in");
-    void dom.infoPanel.offsetWidth; // Trigger reflow to restart animation
+    void dom.infoPanel.offsetWidth;
     dom.infoPanel.classList.add("fade-in");
   }
 
@@ -430,27 +448,20 @@ document.addEventListener("DOMContentLoaded", () => {
           `[data-row='${r}'][data-col='${c}']`
         );
         if (!cell) continue;
-        cell.className = "grid-cell"; // Reset all classes
-        cell.dataset.type = type; // Ensure type is set correctly
+        cell.className = "grid-cell";
+        cell.dataset.type = type;
         const val = boardData[r][c];
 
         if (type === "place") {
-          // My board (where I place planes)
           if (val === "H") cell.classList.add("cell-head");
           else if (val === "B") cell.classList.add("cell-placed");
-          // After a shot from opponent, my board cells change to 'D', 'I', or 'M'
-          else if (val === "D")
-            cell.classList.add("cell-hit-head"); // Hit (Destroyed head)
-          else if (val === "I")
-            cell.classList.add("cell-hit-body"); // Hit (Impact body)
-          else if (val === "M") cell.classList.add("cell-miss"); // Miss
+          else if (val === "D") cell.classList.add("cell-hit-head");
+          else if (val === "I") cell.classList.add("cell-hit-body");
+          else if (val === "M") cell.classList.add("cell-miss");
         } else {
-          // Opponent's board (where I shoot)
-          if (val === "D")
-            cell.classList.add("cell-hit-head"); // My shot hit head
-          else if (val === "I")
-            cell.classList.add("cell-hit-body"); // My shot hit body
-          else if (val === "M") cell.classList.add("cell-miss"); // My shot missed
+          if (val === "D") cell.classList.add("cell-hit-head");
+          else if (val === "I") cell.classList.add("cell-hit-body");
+          else if (val === "M") cell.classList.add("cell-miss");
         }
       }
     }
@@ -465,37 +476,35 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.readyButton.style.display =
       state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
 
-    // Cursor management
-    dom.myPlaceBoard.style.cursor =
-      state.phase === "PLACE" ? "pointer" : "default";
+    // Cursor management for opponent's board (shoot board)
     dom.opponentShootBoard.style.cursor =
-      state.phase === "SHOOT" && state.isMyTurn && dom.shootBoard[0][0] === null // Only allow clicking if cell hasn't been shot
-        ? "crosshair" // Indicate clickable target
-        : "default"; // Default cursor
+      state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "default";
 
     // Info panel messages
+    let infoMessage = "";
     switch (state.phase) {
+      case "LOBBY":
+        infoMessage = "Chờ người chơi hoặc tạo/tham gia phòng.";
+        break;
       case "PLACE":
-        updateInfo(
-          `Hãy đặt máy bay ${state.planesPlaced}/${PLANES_PER_PLAYER}. Xoay và click để đặt.`
-        );
+        infoMessage = `Hãy đặt máy bay ${state.planesPlaced}/${PLANES_PER_PLAYER}. Xoay và click để đặt.`;
         break;
       case "WAITING":
-        updateInfo("Đang chờ đối thủ đặt máy bay...");
+        infoMessage = "Đang chờ đối thủ đặt máy bay...";
         break;
       case "SHOOT":
-        updateInfo(
-          state.isMyTurn
-            ? "Lượt của bạn! Hãy tấn công một ô trên bàn đối thủ."
-            : "Lượt của đối thủ. Xin chờ..."
-        );
+        infoMessage = state.isMyTurn
+          ? "Lượt của bạn! Hãy tấn công một ô trên bàn đối thủ."
+          : "Lượt của đối thủ. Xin chờ...";
         break;
       case "GAMEOVER":
-        updateInfo("TRÒ CHƠI KẾT THÚC!");
+        infoMessage = "TRÒ CHƠI KẾT THÚC!";
         break;
       default:
-        updateInfo(""); // Clear info for LOBBY
+        infoMessage = "";
     }
+    updateInfo(infoMessage);
+
     console.log(
       `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}`
     );
