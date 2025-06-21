@@ -20,6 +20,87 @@ app.get("/", (req, res) => {
 
 const rooms = {};
 const PLACEMENT_TIME_LIMIT = 30000; // 30 giây
+const ROWS = 10;
+const COLS = 10;
+const PLANES_PER_PLAYER = 3;
+const BASE_PLANE_SHAPE = [
+  [0, 0], // Head relative to its own position
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+  [0, 2],
+  [-1, 3],
+  [0, 3],
+  [1, 3],
+];
+const DIRECTIONS = ["down", "left", "up", "right"];
+
+// --- HELPER FUNCTIONS FOR RANDOM BOARD GENERATION ---
+function getRotatedShape(direction) {
+  switch (direction) {
+    case "down":
+      return BASE_PLANE_SHAPE;
+    case "left":
+      return BASE_PLANE_SHAPE.map(([x, y]) => [-y, x]);
+    case "up":
+      return BASE_PLANE_SHAPE.map(([x, y]) => [-x, -y]);
+    case "right":
+      return BASE_PLANE_SHAPE.map(([x, y]) => [y, -x]);
+    default:
+      return BASE_PLANE_SHAPE;
+  }
+}
+
+function canPlacePlane(board, row, col, shape) {
+  for (const [dx, dy] of shape) {
+    const r = row + dy;
+    const c = col + dx;
+    // Check bounds and if cell is already occupied
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function placePlaneOnBoard(board, headRow, headCol, shape) {
+  // Head is the first element in BASE_PLANE_SHAPE (0,0) relative to itself
+  board[headRow + shape[0][1]][headCol + shape[0][0]] = "H"; // Place head
+  for (let i = 1; i < shape.length; i++) {
+    const [dx, dy] = shape[i];
+    board[headRow + dy][headCol + dx] = "B"; // Place body parts
+  }
+}
+
+// Function to generate a random valid placeBoard for a player
+function generateRandomPlaceBoard() {
+  let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  let planesPlaced = 0;
+
+  while (planesPlaced < PLANES_PER_PLAYER) {
+    const randomRow = Math.floor(Math.random() * ROWS);
+    const randomCol = Math.floor(Math.random() * COLS);
+    const randomDirection =
+      DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+    const shape = getRotatedShape(randomDirection);
+
+    // Try to place the plane with its head at (randomRow, randomCol)
+    // The canPlacePlane function needs to check relative to the head's position
+    // The head's relative position (0,0) in shape maps to (randomRow, randomCol)
+    const headX = shape[0][0]; // Relative x of head in shape
+    const headY = shape[0][1]; // Relative y of head in shape
+
+    // Calculate the actual top-left corner of the plane's bounding box
+    // (This is a simplified approach, direct canPlacePlane check is more robust)
+    // The canPlacePlane is correctly checking relative to the head position (randomRow, randomCol)
+    if (canPlacePlane(board, randomRow, randomCol, shape)) {
+      placePlaneOnBoard(board, randomRow, randomCol, shape);
+      planesPlaced++;
+    }
+  }
+  return board;
+}
+// --- END HELPER FUNCTIONS ---
 
 const startShootingPhase = (roomCode) => {
   const room = rooms[roomCode];
@@ -44,6 +125,19 @@ const startShootingPhase = (roomCode) => {
       `[Server] startShootingPhase: Cleared placement timer for room ${roomCode}.`
     );
   }
+
+  // --- NEW LOGIC: Ensure all players have a placeBoard ---
+  room.players.forEach((player) => {
+    if (!player.ready || !player.placeBoard) {
+      // If player is not ready or their placeBoard is null, generate one for them
+      player.placeBoard = generateRandomPlaceBoard();
+      player.ready = true; // Mark as ready after generating board
+      console.log(
+        `[Server] Player ${player.playerIndex} (${player.id}) did not submit placeBoard. Generated random board for them.`
+      );
+    }
+  });
+  // --- END NEW LOGIC ---
 
   room.state = "shooting";
   io.to(roomCode).emit("shootingPhaseStart");
@@ -214,12 +308,13 @@ io.on("connection", (socket) => {
       );
       return;
     }
-    // --- DEBUG LOG QUAN TRỌNG NHẤT ---
+
+    // This check is now less likely to be hit, thanks to random board generation for unready players
     if (!targetPlayer.placeBoard) {
-      console.log(
-        `[Server] Shoot failed for ${socket.id}: Target player (${targetPlayer.id}) placeBoard is NULL. They might not have clicked 'Ready'.`
+      console.error(
+        `[Server] CRITICAL ERROR: Target player (${targetPlayer.id}) placeBoard is NULL at SHOOT phase! This should not happen.`
       );
-      socket.emit("error", "Đối thủ chưa đặt máy bay. Không thể bắn."); // Gửi thông báo lỗi cho người bắn
+      socket.emit("error", "Lỗi nội bộ server: Bảng đối thủ không hợp lệ."); // Gửi thông báo lỗi cho người bắn
       return;
     }
 
