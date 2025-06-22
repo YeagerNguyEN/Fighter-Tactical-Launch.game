@@ -96,9 +96,9 @@ document.addEventListener("DOMContentLoaded", () => {
   socket.on("gameStart", (data) => {
     // data.players array will contain info for both players (including their IDs and playerIndex)
     // Find my playerIndex from the data.players array if I'm the joining player
-    const self = data.players.find(p => p.id === socket.id);
+    const self = data.players.find((p) => p.id === socket.id);
     if (self) {
-        state.playerIndex = self.playerIndex;
+      state.playerIndex = self.playerIndex;
     }
     state.roomCode = data.roomCode; // Ensure roomCode is set for both players
 
@@ -213,6 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
       roomCode: state.roomCode,
       placeBoard: state.placeBoard,
     });
+    // Client-side: Clear placement timer immediately when player is ready
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -269,26 +270,26 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
     } else if (state.phase === "SHOOT" && type === "shoot") {
-        if (!state.isMyTurn) {
-            updateInfo("Không phải lượt của bạn!");
-            console.log("[Client] Cannot shoot: Not your turn.");
-            return;
-        }
+      if (!state.isMyTurn) {
+        updateInfo("Không phải lượt của bạn!");
+        console.log("[Client] Cannot shoot: Not your turn.");
+        return;
+      }
 
-        // Prevent shooting already hit/missed cells (client-side check for better UX)
-        if (state.shootBoard[r][c] !== null) {
-            updateInfo("Ô này đã bị bắn rồi!");
-            console.log(
-                `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
-            );
-            return;
-        }
+      // Prevent shooting already hit/missed cells (client-side check for better UX)
+      if (state.shootBoard[r][c] !== null) {
+        updateInfo("Ô này đã bị bắn rồi!");
+        console.log(
+          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
+        );
+        return;
+      }
 
-        socket.emit("shoot", { roomCode: state.roomCode, row: r, col: c });
-        console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
-        // Immediately disable shooting visually on client side
-        state.isMyTurn = false; // Optimistic update, server will confirm with newTurn
-        updateUI();
+      socket.emit("shoot", { roomCode: state.roomCode, row: r, col: c });
+      console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
+      // Immediately disable shooting visually on client side
+      state.isMyTurn = false; // Optimistic update, server will confirm with newTurn
+      updateUI();
     } else if (state.phase !== "SHOOT" && type === "shoot") {
       console.log(
         `[Client] Cannot shoot: Not in SHOOT phase (current phase: ${state.phase}).`
@@ -321,20 +322,23 @@ document.addEventListener("DOMContentLoaded", () => {
       `[Client] Received 'placementTimerStarted' with ${timeLeft} seconds.`
     );
 
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
+    // Only start if interval is not already running or not in WAITING state (already ready)
+    if (!placementCountdownInterval && state.phase !== "WAITING") {
+      placementCountdownInterval = setInterval(() => {
+        timeLeft--;
+        dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
+        if (timeLeft <= 0) {
+          clearInterval(placementCountdownInterval);
+          placementCountdownInterval = null;
+          dom.placementTimerDisplay.classList.add("hidden");
+          console.log("[Client] Placement timer finished.");
+        }
+      }, 1000);
+    } else {
+      console.log(
+        "[Client] Placement timer already running or player already ready."
+      );
     }
-
-    placementCountdownInterval = setInterval(() => {
-      timeLeft--;
-      dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
-      if (timeLeft <= 0) {
-        clearInterval(placementCountdownInterval);
-        placementCountdownInterval = null;
-        dom.placementTimerDisplay.classList.add("hidden");
-        console.log("[Client] Placement timer finished.");
-      }
-    }, 1000);
   });
 
   socket.on("opponentReady", () => {
@@ -345,11 +349,12 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[Client] Received 'opponentReady'.");
   });
 
-  // UPDATED: Receive currentTurnIndex from server
+  // Receive currentTurnIndex from server
   socket.on("shootingPhaseStart", (data) => {
     state.phase = "SHOOT";
     state.isMyTurn = state.playerIndex === data.currentTurnIndex; // Set initial turn
     if (placementCountdownInterval) {
+      // Clear any remaining client-side timer
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
     }
@@ -419,6 +424,7 @@ document.addEventListener("DOMContentLoaded", () => {
       state.phase = "GAMEOVER"; // Set phase to GAMEOVER so transition button resets
     }
     if (placementCountdownInterval) {
+      // Clear timer if opponent leaves before timeout
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
       dom.placementTimerDisplay.classList.add("hidden");
@@ -508,16 +514,15 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.readyButton.style.display =
       state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
 
-    // Control opponent board interactivity
+    // Control opponent board interactivity based on phase and turn
     if (state.phase === "SHOOT" && state.isMyTurn) {
-        dom.opponentShootBoard.style.cursor = "crosshair";
-        dom.opponentShootBoard.classList.remove("disabled-board");
+      dom.opponentShootBoard.style.cursor = "crosshair";
+      dom.opponentShootBoard.classList.remove("disabled-board");
     } else {
-        dom.opponentShootBoard.style.cursor = "default";
-        // Visually disable the board if it's not the shooting phase or not my turn
-        dom.opponentShootBoard.classList.add("disabled-board");
+      dom.opponentShootBoard.style.cursor = "default";
+      // Visually disable the board if it's not the shooting phase or not my turn
+      dom.opponentShootBoard.classList.add("disabled-board");
     }
-
 
     let infoMessage = "";
     switch (state.phase) {

@@ -109,6 +109,7 @@ const startShootingPhase = (roomCode) => {
     return;
   }
 
+  // Clear the timer if it's still active
   if (room.placementTimer) {
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
@@ -117,10 +118,9 @@ const startShootingPhase = (roomCode) => {
     );
   }
 
-  // Ensure all players have a placeBoard and are marked ready
+  // Ensure all players have a placeBoard (generate for those who didn't submit)
   room.players.forEach((player) => {
     if (!player.ready || !player.placeBoard) {
-      // If player is not ready or their placeBoard is null, generate one for them
       player.placeBoard = generateRandomPlaceBoard();
       player.ready = true; // Mark as ready after generating board
       console.log(
@@ -132,16 +132,14 @@ const startShootingPhase = (roomCode) => {
   room.state = "shooting";
   room.currentTurnIndex = 0; // Explicitly set the first turn to player 0
 
-  // <<< IMPORTANT CHANGE HERE >>>
   // Emit 'shootingPhaseStart' with the initial turn index and player info
   io.to(roomCode).emit("shootingPhaseStart", {
     currentTurnIndex: room.currentTurnIndex,
     players: room.players.map((p) => ({
       id: p.id,
       playerIndex: p.playerIndex,
-    })), // Include player info for client
+    })),
   });
-  // <<< END IMPORTANT CHANGE >>>
 
   console.log(
     `[Server] Phòng ${roomCode}: BẮT ĐẦU BẮN. Lượt của người chơi ${room.currentTurnIndex}.`
@@ -201,7 +199,6 @@ io.on("connection", (socket) => {
       id: p.id,
       playerIndex: p.playerIndex,
     }));
-    // --- Cập nhật ở đây: Gửi roomCode lại cho client ---
     io.to(roomCode).emit("gameStart", {
       players: playerInfo,
       roomCode: roomCode,
@@ -249,6 +246,7 @@ io.on("connection", (socket) => {
 
     const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
     if (headCount !== 3) {
+      // Ensure exactly 3 planes are placed
       console.log(
         `[Server] planesPlaced: Player ${socket.id} submitted ${headCount} heads instead of 3. Sending error.`
       );
@@ -269,6 +267,7 @@ io.on("connection", (socket) => {
       );
     }
 
+    // <<< IMPORTANT CHANGE HERE: Check if all players are ready to immediately start shooting phase >>>
     if (room.players.every((p) => p.ready)) {
       console.log(
         `[Server] Phòng ${roomCode}: CẢ HAI người chơi đã sẵn sàng. Gọi startShootingPhase.`
@@ -326,11 +325,12 @@ io.on("connection", (socket) => {
       `[Server] Target cell [${row}, ${col}] current value: ${currentShotValue}.`
     );
 
+    // Logic for M, I, D is here
     if (["D", "I", "M"].includes(currentShotValue)) {
       console.log(
         `[Server] Shoot failed for ${socket.id}: Cell [${row}, ${col}] already shot.`
       );
-      return;
+      return; // Do not proceed if already shot
     }
 
     let result = "M"; // Miss (Trượt)
