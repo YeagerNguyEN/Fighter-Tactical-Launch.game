@@ -68,7 +68,7 @@ function placePlaneOnBoard(board, headRow, headCol, shape) {
   board[headRow + shape[0][1]][headCol + shape[0][0]] = "H"; // Place head
   for (let i = 1; i < shape.length; i++) {
     const [dx, dy] = shape[i];
-    board[headRow + dy][headCol + dx] = "B"; // Place body parts
+    board[headRow + dy][col + dx] = "B"; // Place body parts
   }
 }
 
@@ -135,7 +135,10 @@ const startShootingPhase = (roomCode) => {
   // Emit 'shootingPhaseStart' with the initial turn index and player info
   io.to(roomCode).emit("shootingPhaseStart", {
     currentTurnIndex: room.currentTurnIndex,
-    players: room.players.map(p => ({ id: p.id, playerIndex: p.playerIndex }))
+    players: room.players.map((p) => ({
+      id: p.id,
+      playerIndex: p.playerIndex,
+    })),
   });
 
   console.log(
@@ -242,7 +245,8 @@ io.on("connection", (socket) => {
     }
 
     const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
-    if (headCount !== 3) { // Ensure exactly 3 planes are placed
+    if (headCount !== 3) {
+      // Ensure exactly 3 planes are placed
       console.log(
         `[Server] planesPlaced: Player ${socket.id} submitted ${headCount} heads instead of 3. Sending error.`
       );
@@ -263,7 +267,7 @@ io.on("connection", (socket) => {
       );
     }
 
-    // --- FIX: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
+    // --- FIX MỚI: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
     if (room.players.every((p) => p.ready)) {
       if (room.placementTimer) {
         clearTimeout(room.placementTimer);

@@ -91,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       `[Client] Received 'roomCreated'. Room Code: ${roomCode}, Player Index: ${state.playerIndex}.`
     );
+    updateUI(); // Cập nhật UI để kích hoạt nút ready nếu cần
   });
 
   socket.on("gameStart", (data) => {
@@ -98,7 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (self) {
       state.playerIndex = self.playerIndex;
     }
-    state.roomCode = data.roomCode; // <<< FIX: Đảm bảo roomCode được set cho người chơi tham gia
+    state.roomCode = data.roomCode; // Quan trọng: Đảm bảo roomCode được set cho người chơi tham gia
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
     state.phase = "PLACE";
@@ -203,13 +204,16 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       return;
     }
-    // <<< FIX: Chỉ gửi planesPlaced nếu roomCode đã được thiết lập >>>
-    if (!state.roomCode) {
-      updateInfo("Lỗi: Mã phòng chưa được thiết lập. Vui lòng thử lại.");
+    // --- FIX: Chỉ gửi planesPlaced nếu roomCode đã được thiết lập ---
+    if (state.roomCode === null) {
+      // Đảm bảo roomCode đã có giá trị
+      updateInfo(
+        "Lỗi: Mã phòng chưa được thiết lập. Vui lòng thử lại hoặc kết nối lại."
+      );
       console.error("[Client] Cannot send planesPlaced: roomCode is null.");
       return;
     }
-    // <<< END FIX >>>
+    // --- END FIX ---
 
     state.phase = "WAITING";
     socket.emit("planesPlaced", {
@@ -275,8 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[Client] Cannot shoot: Not your turn.");
         return;
       }
-      if (!state.roomCode) {
-        // Double check roomCode
+      if (state.roomCode === null) {
+        // Kiểm tra lại roomCode
         updateInfo("Lỗi: Mã phòng không hợp lệ để bắn.");
         console.error("[Client] Cannot shoot: roomCode is null.");
         return;
@@ -292,7 +296,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       socket.emit("shoot", { roomCode: state.roomCode, row: r, col: c });
       console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
-      state.isMyTurn = false;
+      state.isMyTurn = false; // Tối ưu: vô hiệu hóa ngay lập tức trên client
       updateUI();
     } else if (state.phase !== "SHOOT" && type === "shoot") {
       console.log(
@@ -353,12 +357,12 @@ document.addEventListener("DOMContentLoaded", () => {
     state.phase = "SHOOT";
     state.isMyTurn = state.playerIndex === data.currentTurnIndex;
 
-    // <<< FIX MỚI: Đảm bảo lớp phủ chuyển tiếp bị ẩn VÀ không gọi showTransition >>>
+    // 🔧 FIX: Đảm bảo lớp phủ chuyển tiếp bị ẩn ngay lập tức
     dom.transition.overlay.classList.add("hidden");
     dom.transition.overlay.classList.remove("flex");
-    // <<< END FIX >>>
 
     if (placementCountdownInterval) {
+      // Clear any remaining client-side timer
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
     }
@@ -511,12 +515,20 @@ document.addEventListener("DOMContentLoaded", () => {
     renderBoard(dom.opponentShootBoard, state.shootBoard, "shoot");
 
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
-    // <<< FIX: Nút Ready chỉ hiển thị khi planesPlaced đủ và roomCode đã có >>>
-    dom.readyButton.style.display =
+
+    // --- FIX: Vô hiệu hóa nút Ready cho đến khi roomCode được thiết lập ---
+    dom.readyButton.disabled = !(
       state.planesPlaced >= PLANES_PER_PLAYER && state.roomCode !== null
-        ? "block"
-        : "none";
-    // <<< END FIX >>>
+    );
+    // Thay vì display = 'block' / 'none', dùng disabled để trực quan hơn
+    // if (dom.readyButton.disabled) {
+    //     dom.readyButton.style.opacity = 0.5; // Làm mờ khi bị vô hiệu hóa
+    //     dom.readyButton.style.cursor = 'not-allowed';
+    // } else {
+    //     dom.readyButton.style.opacity = 1;
+    //     dom.readyButton.style.cursor = 'pointer';
+    // }
+    // --- END FIX ---
 
     if (state.phase === "SHOOT" && state.isMyTurn) {
       dom.opponentShootBoard.style.cursor = "crosshair";
