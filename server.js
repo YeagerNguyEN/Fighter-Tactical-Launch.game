@@ -263,7 +263,7 @@ io.on("connection", (socket) => {
       );
     }
 
-    // --- FIX MỚI: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
+    // --- FIX: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
     if (room.players.every((p) => p.ready)) {
       if (room.placementTimer) {
         clearTimeout(room.placementTimer);
