@@ -1,3 +1,4 @@
+// client.js
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
 
@@ -94,7 +95,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("gameStart", (data) => {
-    console.log("[Client] Received gameStart data:", data); // Thêm log để kiểm tra dữ liệu nhận được
     // Receive data object with roomCode and playerIndex
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";

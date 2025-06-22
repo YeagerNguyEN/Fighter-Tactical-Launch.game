@@ -1,200 +1,180 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trận Chiến Máy Bay</title>
+    <title>Plane Battleship</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-      /* CSS Reset and Basic Styling */
       :root {
-        --bg-color: #1a202c;
-        --primary-color: #2d3748;
-        --secondary-color: #4a5568;
-        --accent-color: #3b82f6;
-        --accent-hover: #2563eb;
-        --text-color: #e2e8f0;
-        --success-color: #10b981;
-        --error-color: #ef4444;
-        --cell-size: clamp(20px, 8vw, 40px);
-        --font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        --board-bg: #111827;
+        --cell-bg: #374151;
+        --cell-border: #4b5563;
+        --text-light: #f3f4f6;
+        --text-dark: #1f2937;
+        --accent-blue: #3b82f6;
+        --accent-green: #22c55e;
+        --accent-red: #ef4444;
+        --accent-yellow: #f59e0b;
+        --accent-gray: #6b7280;
       }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
       body {
-        font-family: var(--font-family);
-        background-color: var(--bg-color);
-        color: var(--text-color);
+        background-color: var(--board-bg);
+        color: var(--text-light);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+          "Segoe UI Symbol";
+        margin: 0;
+        padding: 1rem;
         display: flex;
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        padding: 1rem;
+        box-sizing: border-box;
       }
-
-      /* Main Containers */
-      #main-container {
+      .hidden {
+        display: none !important;
+      }
+      #lobby-container,
+      #game-container {
         width: 100%;
-        max-width: 900px;
-      }
-
-      #lobby-container {
-        background-color: var(--primary-color);
+        max-width: 800px;
+        background-color: #1f2937;
         padding: 2rem;
         border-radius: 0.75rem;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
           0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      }
+      .lobby-title {
         text-align: center;
-      }
-
-      #game-container {
-        display: none;
-        flex-direction: column;
-        align-items: center;
-        gap: 2rem;
-        width: 100%;
-      }
-
-      /* Typography */
-      h1 {
         font-size: 2.25rem;
+        font-weight: bold;
         margin-bottom: 2rem;
-        font-weight: 600;
       }
-
-      /* Buttons and Inputs */
-      .btn {
-        border: none;
-        padding: 0.75rem 1.5rem;
-        font-size: 1rem;
-        font-weight: 600;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        transition: all 0.2s ease-in-out;
-        color: white;
-      }
-
-      .btn-primary {
-        background-color: var(--accent-color);
-        width: 100%;
-      }
-
-      .btn-primary:hover {
-        background-color: var(--accent-hover);
-      }
-
-      .btn-success {
-        background-color: var(--success-color);
-      }
-
-      .btn-success:hover {
-        filter: brightness(1.1);
-      }
-
-      .input-field {
-        width: 100%;
-        padding: 0.75rem;
-        font-size: 1rem;
-        background-color: var(--secondary-color);
-        border: 2px solid transparent;
-        border-radius: 0.5rem;
-        color: var(--text-color);
-        outline: none;
-        transition: border-color 0.2s;
-      }
-
-      .input-field:focus {
-        border-color: var(--accent-color);
-      }
-
-      /* Lobby specific */
-      .lobby-group {
+      .room-actions {
         display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .room-actions > div {
+        display: flex;
+        flex-direction: column;
         gap: 0.5rem;
       }
-      .divider {
-        margin: 1.5rem 0;
-        font-weight: 500;
-        color: #a0aec0;
+      .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        background-color: var(--accent-blue);
+        color: white;
       }
-
+      .btn:hover {
+        background-color: #2563eb;
+      }
+      .input-field {
+        padding: 0.75rem;
+        border: 1px solid var(--cell-border);
+        border-radius: 0.5rem;
+        background-color: var(--cell-bg);
+        color: var(--text-light);
+        font-size: 1rem;
+        text-transform: uppercase;
+      }
       #room-code-display {
-        margin-top: 1.5rem;
-        font-size: 1.1rem;
-        font-weight: 500;
-        min-height: 2rem;
+        margin-top: 1rem;
+        text-align: center;
+        font-size: 1.125rem;
+        color: var(--accent-yellow);
       }
-
-      /* Game Board */
+      #game-container {
+        flex-direction: column;
+        gap: 1.5rem;
+      }
       .boards-wrapper {
         display: flex;
+        justify-content: space-around;
+        gap: 1rem;
         flex-wrap: wrap;
-        justify-content: center;
-        gap: 2rem;
       }
-
       .board-container {
-        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
       }
-      .board-container h2 {
-        margin-bottom: 1rem;
-        font-size: 1.25rem;
-      }
-
       .grid-board {
         display: grid;
-        grid-template-columns: repeat(10, var(--cell-size));
-        grid-template-rows: repeat(10, var(--cell-size));
-        border: 2px solid var(--secondary-color);
-        background-color: var(--primary-color);
+        grid-template-columns: repeat(10, 1fr);
+        grid-template-rows: repeat(10, 1fr);
+        width: 300px;
+        height: 300px;
+        border: 2px solid var(--accent-gray);
+        background-color: var(--cell-bg);
+        border-radius: 0.5rem;
       }
-
       .grid-cell {
-        border: 1px solid var(--secondary-color);
+        border: 1px solid var(--cell-border);
         transition: background-color 0.2s;
       }
-
-      /* Cell States */
-      .cell-head {
-        background-color: #f59e0b;
+      #info-panel {
+        text-align: center;
+        font-size: 1.25rem;
+        font-weight: 600;
+        padding: 1rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 0.5rem;
+        min-height: 50px;
       }
+      .fade-in {
+        animation: fadeIn 0.5s ease-in-out;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      #controls-area {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+      }
+      #opponent-shoot-board.turn-active {
+        cursor: crosshair;
+        border: 2px solid var(--accent-green);
+      }
+      #my-place-board.turn-inactive {
+        border: 2px solid var(--accent-red);
+      }
+      /* --- CELL STYLES --- */
       .cell-placed {
-        background-color: #60a5fa;
+        background-color: var(--accent-gray);
       }
-      .cell-hit-head {
-        background-color: #ef4444;
-      }
-      .cell-hit-body {
-        background-color: #f97316;
-      }
-      .cell-miss {
-        background-color: #6b7280;
+      .cell-head {
+        background-color: var(--accent-blue);
       }
       .cell-preview-valid {
-        background-color: rgba(16, 185, 129, 0.5);
+        background-color: rgba(34, 197, 94, 0.5);
       }
       .cell-preview-invalid {
         background-color: rgba(239, 68, 68, 0.5);
       }
-
-      /* Controls */
-      #controls-area {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
+      .cell-miss {
+        background-color: #60a5fa; /* Light Blue */
       }
-      #info-panel {
-        padding: 1rem;
-        background-color: var(--primary-color);
-        border-radius: 0.5rem;
-        text-align: center;
-        font-size: 1.1rem;
-        font-weight: 500;
-        min-width: 250px;
+      .cell-hit-body {
+        background-color: var(--accent-yellow);
+      }
+      .cell-hit-head {
+        background-color: var(--accent-red);
       }
 
       /* Transition Overlay */
@@ -202,99 +182,105 @@
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
+        right: 0;
+        bottom: 0;
         background-color: rgba(0, 0, 0, 0.8);
-        display: none; /* Changed from 'flex' */
+        display: flex;
         justify-content: center;
         align-items: center;
         z-index: 100;
-      }
-      #transition-box {
-        background-color: var(--primary-color);
-        padding: 2.5rem;
-        border-radius: 0.75rem;
+        flex-direction: column;
+        padding: 2rem;
         text-align: center;
+      }
+      #transition-content {
+        background: var(--board-bg);
+        padding: 2rem 3rem;
+        border-radius: 1rem;
         max-width: 400px;
       }
       #transition-title {
-        font-size: 1.75rem;
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--accent-yellow);
         margin-bottom: 1rem;
       }
       #transition-message {
-        font-size: 1.1rem;
+        font-size: 1.2rem;
         margin-bottom: 2rem;
-        color: #cbd5e1;
       }
 
-      /* Cursors */
-      .cursor-pointer {
-        cursor: pointer;
-      }
-      .cursor-default {
-        cursor: default;
-      }
-      .cursor-not-allowed {
-        cursor: not-allowed;
+      /* Timer */
+      #placement-timer {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        background-color: var(--accent-red);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: bold;
       }
     </style>
   </head>
   <body>
-    <div id="main-container">
-      <!-- Lobby Screen -->
-      <div id="lobby-container">
-        <h1>Trận Chiến Máy Bay</h1>
-        <button id="create-room-btn" class="btn btn-primary">
-          Tạo Phòng Mới
-        </button>
-        <div class="divider">hoặc</div>
-        <div class="lobby-group">
+    <!-- Lobby Screen -->
+    <div id="lobby-container">
+      <h1 class="lobby-title">Plane Battleship</h1>
+      <div class="room-actions">
+        <div>
+          <button id="create-room-btn" class="btn">Create Room</button>
+          <p id="room-code-display"></p>
+        </div>
+        <div>
           <input
             type="text"
             id="room-code-input"
             class="input-field"
-            placeholder="NHẬP MÃ PHÒNG..."
+            placeholder="Enter Room Code"
           />
-          <button id="join-room-btn" class="btn btn-success">Vào Phòng</button>
-        </div>
-        <div id="room-code-display"></div>
-      </div>
-
-      <!-- Game Screen -->
-      <div id="game-container">
-        <div id="info-panel">Hãy đặt máy bay của bạn!</div>
-        <div class="boards-wrapper">
-          <div class="board-container">
-            <h2>BẢNG CỦA BẠN</h2>
-            <div id="my-place-board" class="grid-board"></div>
-          </div>
-          <div class="board-container">
-            <h2>BẢNG CỦA ĐỐI THỦ</h2>
-            <div id="opponent-shoot-board" class="grid-board"></div>
-          </div>
-        </div>
-        <div id="controls-area">
-          <button id="rotate-button" class="btn btn-primary">Xoay</button>
-          <button id="ready-button" class="btn btn-success">Sẵn Sàng</button>
+          <button id="join-room-btn" class="btn">Join Room</button>
         </div>
       </div>
     </div>
 
-    <!-- Transition/Modal Screen -->
-    <div id="transition-overlay">
-      <div id="transition-box">
+    <!-- Game Screen -->
+    <div id="game-container" class="hidden">
+      <div id="info-panel"></div>
+      <div class="boards-wrapper">
+        <div class="board-container">
+          <h2>Your Airspace (You)</h2>
+          <div id="my-place-board" class="grid-board"></div>
+        </div>
+        <div class="board-container">
+          <h2>Enemy Airspace (Opponent)</h2>
+          <div id="opponent-shoot-board" class="grid-board"></div>
+        </div>
+      </div>
+      <div id="controls-area">
+        <button id="rotate-button" class="btn">Rotate Plane</button>
+        <button id="ready-button" class="btn">Ready</button>
+      </div>
+    </div>
+
+    <!-- Timer Display -->
+    <div id="placement-timer" class="hidden"></div>
+
+    <!-- Transition/Info Overlay -->
+    <div id="transition-overlay" class="hidden">
+      <div id="transition-content">
         <h2 id="transition-title"></h2>
         <p id="transition-message"></p>
-        <button id="transition-button" class="btn btn-primary">OK</button>
+        <button id="transition-button" class="btn">OK</button>
       </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script>
+      // client.js
       document.addEventListener("DOMContentLoaded", () => {
-        // Sửa lỗi: Kết nối tới server. Khi để trống, nó sẽ tự động kết nối đúng địa chỉ.
         const socket = io();
 
+        // --- DOM ELEMENTS ---
         const dom = {
           lobby: document.getElementById("lobby-container"),
           game: document.getElementById("game-container"),
@@ -308,6 +294,7 @@
           rotateButton: document.getElementById("rotate-button"),
           readyButton: document.getElementById("ready-button"),
           controlsArea: document.getElementById("controls-area"),
+          placementTimerDisplay: document.getElementById("placement-timer"),
           transition: {
             overlay: document.getElementById("transition-overlay"),
             title: document.getElementById("transition-title"),
@@ -316,30 +303,31 @@
           },
         };
 
+        // --- GAME CONSTANTS ---
         const ROWS = 10;
         const COLS = 10;
-        const PLANES_TO_PLACE = 3;
+        const PLANES_PER_PLAYER = 3;
         const DIRECTIONS = ["down", "left", "up", "right"];
         const BASE_PLANE_SHAPE = [
-          { r: 0, c: 0, t: "H" },
-          { r: 1, c: -1, t: "B" },
-          { r: 1, c: 0, t: "B" },
-          { r: 1, c: 1, t: "B" },
-          { r: 2, c: 0, t: "B" },
-          { r: 3, c: -1, t: "B" },
-          { r: 3, c: 0, t: "B" },
-          { r: 3, c: 1, t: "B" },
+          [0, 0],
+          [-1, 1],
+          [0, 1],
+          [1, 1],
+          [0, 2],
+          [-1, 3],
+          [0, 3],
+          [1, 3],
         ];
 
+        // --- GAME STATE ---
         let state;
+        let placementCountdownInterval = null;
 
         function resetGame() {
           state = {
             roomCode: null,
             playerIndex: -1,
-            placeBoard: Array.from({ length: ROWS }, () =>
-              Array(COLS).fill(null)
-            ),
+            placeBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(0)),
             shootBoard: Array.from({ length: ROWS }, () =>
               Array(COLS).fill(null)
             ),
@@ -353,6 +341,12 @@
           dom.game.style.display = "none";
           dom.roomCodeDisplay.textContent = "";
           dom.roomCodeInput.value = "";
+          if (placementCountdownInterval) {
+            clearInterval(placementCountdownInterval);
+            placementCountdownInterval = null;
+          }
+          dom.placementTimerDisplay.classList.add("hidden");
+          dom.transition.overlay.classList.add("hidden");
         }
 
         // --- LOBBY LOGIC ---
@@ -363,197 +357,67 @@
           const roomCode = dom.roomCodeInput.value.trim().toUpperCase();
           if (roomCode) socket.emit("joinRoom", roomCode);
         });
-        dom.roomCodeInput.addEventListener("keyup", (e) => {
-          if (e.key === "Enter") dom.joinRoomBtn.click();
-        });
 
+        // --- SERVER EVENT HANDLERS (Core Logic) ---
+
+        // For creator: server confirms room is made
         socket.on("roomCreated", (roomCode) => {
           state.roomCode = roomCode;
           state.playerIndex = 0;
-          dom.roomCodeDisplay.textContent = `Mã phòng: ${roomCode}. Đang chờ đối thủ...`;
+          dom.roomCodeDisplay.textContent = `Room Code: ${roomCode}. Waiting for opponent...`;
         });
 
-        socket.on("gameStart", (data) => {
-          // Sửa lỗi: Xác định đúng playerIndex cho cả hai người chơi
-          const myPlayerInfo = data.players.find((p) => p.id === socket.id);
-          if (myPlayerInfo) {
-            state.playerIndex = myPlayerInfo.playerIndex;
-          }
+        // For joiner: server confirms join and provides details
+        socket.on("joinedRoom", (data) => {
+          state.roomCode = data.roomCode;
+          state.playerIndex = data.playerIndex;
+          console.log(
+            `[Client] Joined room confirmed. Code: ${state.roomCode}, Index: ${state.playerIndex}`
+          );
+        });
 
+        // For BOTH players: server signals to start the placement phase
+        socket.on("gameStart", () => {
           dom.lobby.style.display = "none";
           dom.game.style.display = "flex";
           state.phase = "PLACE";
           initGameBoards();
           updateUI();
+          console.log(
+            "[Client] Received 'gameStart'. Transitioning to PLACE phase."
+          );
         });
 
         socket.on("placementTimerStarted", (timeLimit) => {
-          let timeLeft = timeLimit / 1000;
-          updateInfo(`Hãy đặt máy bay! Thời gian còn lại: ${timeLeft}s`);
-          const timerInterval = setInterval(() => {
+          let timeLeft = Math.ceil(timeLimit / 1000);
+          dom.placementTimerDisplay.classList.remove("hidden");
+          dom.placementTimerDisplay.textContent = `Time: ${timeLeft}s`;
+          if (placementCountdownInterval)
+            clearInterval(placementCountdownInterval);
+          placementCountdownInterval = setInterval(() => {
             timeLeft--;
-            if (state.phase === "PLACE") {
-              updateInfo(`Hãy đặt máy bay! Thời gian còn lại: ${timeLeft}s`);
-            }
-            if (timeLeft <= 0) {
-              clearInterval(timerInterval);
-            }
+            dom.placementTimerDisplay.textContent = `Time: ${timeLeft}s`;
+            if (timeLeft <= 0) clearInterval(placementCountdownInterval);
           }, 1000);
         });
 
-        socket.on("error", (message) => showTransition("Lỗi", message));
-
-        // --- BOARD CREATION ---
-        function initGameBoards() {
-          createBoard(dom.myPlaceBoard, "place");
-          createBoard(dom.opponentShootBoard, "shoot");
-        }
-
-        function createBoard(container, type) {
-          container.innerHTML = "";
-          for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-              const cell = document.createElement("div");
-              cell.classList.add("grid-cell");
-              cell.dataset.row = r;
-              cell.dataset.col = c;
-              cell.dataset.type = type;
-              container.appendChild(cell);
-            }
-          }
-          container.addEventListener("mouseover", handleCellHover);
-          container.addEventListener("mouseout", handleCellMouseOut);
-          container.addEventListener("click", handleCellClick);
-        }
-
-        // --- GAME LOGIC ---
-        function getRotatedShape(direction) {
-          return BASE_PLANE_SHAPE.map((p) => {
-            switch (direction) {
-              case "down":
-                return { r: p.r, c: p.c, t: p.t };
-              case "left":
-                return { r: p.c, c: -p.r, t: p.t };
-              case "up":
-                return { r: -p.r, c: -p.c, t: p.t };
-              case "right":
-                return { r: -p.c, c: p.r, t: p.t };
-            }
-          });
-        }
-
-        function canPlacePlane(board, row, col, shape) {
-          for (const part of shape) {
-            const r = row + part.r;
-            const c = col + part.c;
-            if (
-              r < 0 ||
-              r >= ROWS ||
-              c < 0 ||
-              c >= COLS ||
-              board[r][c] !== null
-            ) {
-              return false;
-            }
-          }
-          return true;
-        }
-
-        function placePlaneOnBoard(board, row, col, shape) {
-          shape.forEach((part) => {
-            board[row + part.r][col + part.c] = part.t;
-          });
-        }
-
-        // --- EVENT HANDLERS ---
-        dom.rotateButton.addEventListener("click", () => {
-          const currentIndex = DIRECTIONS.indexOf(state.currentDirection);
-          state.currentDirection =
-            DIRECTIONS[(currentIndex + 1) % DIRECTIONS.length];
-          if (state.lastHoveredCell) {
-            const { r, c } = state.lastHoveredCell;
-            clearPreview();
-            drawPreview(r, c);
+        socket.on("opponentReady", () => {
+          if (state.phase === "PLACE") {
+            // Only show this if you are still placing
+            updateInfo("Your opponent is ready!");
           }
         });
 
-        dom.readyButton.addEventListener("click", () => {
-          state.phase = "WAITING";
-          socket.emit("planesPlaced", {
-            roomCode: state.roomCode,
-            placeBoard: state.placeBoard,
-          });
-          updateUI();
-        });
-
-        dom.transition.button.addEventListener("click", () => {
-          dom.transition.overlay.style.display = "none";
-          if (state.phase === "GAMEOVER") {
-            location.reload();
-          }
-        });
-
-        function handleCellClick(e) {
-          const cell = e.target.closest(".grid-cell");
-          if (!cell) return;
-          const r = parseInt(cell.dataset.row);
-          const c = parseInt(cell.dataset.col);
-          const type = cell.dataset.type;
-
-          if (
-            state.phase === "PLACE" &&
-            type === "place" &&
-            state.planesPlaced < PLANES_TO_PLACE
-          ) {
-            const shape = getRotatedShape(state.currentDirection);
-            if (canPlacePlane(state.placeBoard, r, c, shape)) {
-              placePlaneOnBoard(state.placeBoard, r, c, shape);
-              state.planesPlaced++;
-              clearPreview();
-              updateUI();
-            }
-          }
-
-          if (state.phase === "SHOOT" && type === "shoot" && state.isMyTurn) {
-            if (state.shootBoard[r][c] === null) {
-              socket.emit("shoot", {
-                roomCode: state.roomCode,
-                row: r,
-                col: c,
-              });
-            }
-          }
-        }
-
-        function handleCellHover(e) {
-          const cell = e.target.closest(".grid-cell");
-          if (
-            !cell ||
-            state.phase !== "PLACE" ||
-            cell.dataset.type !== "place" ||
-            state.planesPlaced >= PLANES_TO_PLACE
-          )
-            return;
-
-          const r = parseInt(cell.dataset.row);
-          const c = parseInt(cell.dataset.col);
-          state.lastHoveredCell = { r, c };
-          drawPreview(r, c);
-        }
-
-        function handleCellMouseOut() {
-          if (state.phase === "PLACE") clearPreview();
-        }
-
-        // --- SERVER EVENT HANDLERS (Sửa lỗi và bổ sung) ---
-        socket.on("opponentReady", () => updateInfo("Đối thủ đã sẵn sàng!"));
-
-        // Sửa lỗi: Lắng nghe đúng sự kiện và tách riêng
         socket.on("shootingPhaseStart", () => {
           state.phase = "SHOOT";
+          if (placementCountdownInterval) {
+            clearInterval(placementCountdownInterval);
+            placementCountdownInterval = null;
+          }
+          dom.placementTimerDisplay.classList.add("hidden");
           showTransition(
-            "Trận Chiến Bắt Đầu!",
-            "Lượt bắn sẽ được quyết định ngay sau đây."
+            "Battle Begins!",
+            "The first turn will be decided shortly."
           );
           updateUI();
         });
@@ -577,29 +441,237 @@
           state.phase = "GAMEOVER";
           const message =
             winnerIndex === state.playerIndex
-              ? "Bạn đã chiến thắng!"
-              : "Bạn đã thua cuộc.";
-          showTransition("TRÒ CHƠI KẾT THÚC", message, "Chơi Lại");
+              ? "You are victorious!"
+              : "You have been defeated.";
+          showTransition("GAME OVER", message, "Play Again");
+          updateUI();
         });
 
         socket.on("opponentLeft", () => {
           if (state.phase !== "GAMEOVER") {
             state.phase = "GAMEOVER";
             showTransition(
-              "Đối Thủ Đã Thoát",
-              "Bạn đã thắng do đối thủ thoát.",
-              "Về Sảnh"
+              "Opponent Left",
+              "You win by default.",
+              "Back to Lobby"
             );
           }
         });
 
-        // --- UI & PREVIEW ---
+        socket.on("error", (message) => {
+          console.error(`[Client] Server Error: ${message}`);
+          showTransition("Error", message);
+        });
+
+        // --- BOARD & UI LOGIC ---
+
+        function initGameBoards() {
+          createBoard(dom.myPlaceBoard, "place");
+          createBoard(dom.opponentShootBoard, "shoot");
+        }
+
+        function createBoard(container, type) {
+          container.innerHTML = "";
+          for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+              const cell = document.createElement("div");
+              cell.classList.add("grid-cell");
+              cell.dataset.row = r;
+              cell.dataset.col = c;
+              cell.dataset.type = type;
+              container.appendChild(cell);
+            }
+          }
+          container.addEventListener("mouseover", handleCellHover);
+          container.addEventListener("mouseout", handleCellMouseOut);
+          container.addEventListener("click", handleCellClick);
+        }
+
+        function renderBoard(container, boardData, type) {
+          for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+              const cell = container.querySelector(
+                `[data-row='${r}'][data-col='${c}']`
+              );
+              if (!cell) continue;
+
+              // Base class
+              cell.className = "grid-cell";
+
+              const val = boardData[r][c];
+
+              // Apply style based on value
+              if (type === "place") {
+                // Your board
+                if (val === "H") cell.classList.add("cell-head");
+                else if (val === "B") cell.classList.add("cell-placed");
+                else if (val === "D") cell.classList.add("cell-hit-head");
+                else if (val === "I") cell.classList.add("cell-hit-body");
+                else if (val === "M") cell.classList.add("cell-miss");
+              } else {
+                // Opponent's board (your shots)
+                if (val === "D") cell.classList.add("cell-hit-head");
+                else if (val === "I") cell.classList.add("cell-hit-body");
+                else if (val === "M") cell.classList.add("cell-miss");
+              }
+            }
+          }
+        }
+
+        function updateUI() {
+          renderBoard(dom.myPlaceBoard, state.placeBoard, "place");
+          renderBoard(dom.opponentShootBoard, state.shootBoard, "shoot");
+
+          dom.controlsArea.style.display =
+            state.phase === "PLACE" ? "flex" : "none";
+          dom.readyButton.style.display =
+            state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
+
+          dom.opponentShootBoard.classList.toggle(
+            "turn-active",
+            state.phase === "SHOOT" && state.isMyTurn
+          );
+          dom.myPlaceBoard.classList.toggle(
+            "turn-inactive",
+            state.phase === "SHOOT" && !state.isMyTurn
+          );
+
+          let infoMessage = "";
+          switch (state.phase) {
+            case "LOBBY":
+              infoMessage = "Create or join a room to start.";
+              break;
+            case "PLACE":
+              infoMessage = `Place your planes (${state.planesPlaced}/${PLANES_PER_PLAYER}). Rotate and click to place.`;
+              break;
+            case "WAITING":
+              infoMessage = "Waiting for opponent to get ready...";
+              break;
+            case "SHOOT":
+              infoMessage = state.isMyTurn
+                ? "Your turn! Fire at the enemy airspace."
+                : "Opponent's turn. Awaiting their move...";
+              break;
+            case "GAMEOVER":
+              infoMessage = "GAME OVER!";
+              break;
+          }
+          updateInfo(infoMessage);
+        }
+
+        // --- EVENT HANDLERS ---
+        function handleCellClick(e) {
+          const cell = e.target.closest(".grid-cell");
+          if (!cell) return;
+          const r = parseInt(cell.dataset.row);
+          const c = parseInt(cell.dataset.col);
+          const type = cell.dataset.type;
+
+          if (state.phase === "PLACE" && type === "place") {
+            const shape = getRotatedShape(state.currentDirection);
+            if (canPlacePlane(state.placeBoard, r, c, shape)) {
+              placePlaneOnBoard(state.placeBoard, r, c, shape);
+              state.planesPlaced++;
+              clearPreview();
+              updateUI();
+            }
+          } else if (
+            state.phase === "SHOOT" &&
+            type === "shoot" &&
+            state.isMyTurn
+          ) {
+            if (state.shootBoard[r][c] === null) {
+              socket.emit("shoot", {
+                roomCode: state.roomCode,
+                row: r,
+                col: c,
+              });
+            }
+          }
+        }
+
+        function handleCellHover(e) {
+          const cell = e.target.closest(".grid-cell");
+          if (!cell || state.phase !== "PLACE" || cell.dataset.type !== "place")
+            return;
+          const r = parseInt(cell.dataset.row);
+          const c = parseInt(cell.dataset.col);
+          state.lastHoveredCell = { r, c };
+          drawPreview(r, c);
+        }
+        function handleCellMouseOut() {
+          clearPreview();
+          state.lastHoveredCell = null;
+        }
+
+        dom.rotateButton.addEventListener("click", () => {
+          const currentIndex = DIRECTIONS.indexOf(state.currentDirection);
+          state.currentDirection =
+            DIRECTIONS[(currentIndex + 1) % DIRECTIONS.length];
+          if (state.lastHoveredCell) {
+            const { r, c } = state.lastHoveredCell;
+            clearPreview();
+            drawPreview(r, c);
+          }
+        });
+
+        dom.readyButton.addEventListener("click", () => {
+          if (state.planesPlaced < PLANES_PER_PLAYER) {
+            return updateInfo(
+              `You need to place all ${PLANES_PER_PLAYER} planes first.`
+            );
+          }
+          state.phase = "WAITING";
+          socket.emit("planesPlaced", {
+            roomCode: state.roomCode,
+            placeBoard: state.placeBoard,
+          });
+          updateUI();
+        });
+
+        dom.transition.button.addEventListener("click", () => {
+          dom.transition.overlay.classList.add("hidden");
+          if (state.phase === "GAMEOVER") {
+            resetGame();
+            location.reload(); // Reload to get a fresh start
+          }
+        });
+
+        // --- HELPERS ---
+        function getRotatedShape(direction) {
+          switch (direction) {
+            case "down":
+              return BASE_PLANE_SHAPE;
+            case "left":
+              return BASE_PLANE_SHAPE.map(([x, y]) => [-y, x]);
+            case "up":
+              return BASE_PLANE_SHAPE.map(([x, y]) => [-x, -y]);
+            case "right":
+              return BASE_PLANE_SHAPE.map(([x, y]) => [y, -x]);
+          }
+        }
+        function canPlacePlane(board, row, col, shape) {
+          for (const [dx, dy] of shape) {
+            const r = row + dy;
+            const c = col + dx;
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== 0)
+              return false;
+          }
+          return true;
+        }
+        function placePlaneOnBoard(board, row, col, shape) {
+          board[row + shape[0][1]][col + shape[0][0]] = "H";
+          for (let i = 1; i < shape.length; i++) {
+            const [dx, dy] = shape[i];
+            board[row + dy][col + dx] = "B";
+          }
+        }
         function drawPreview(row, col) {
           const shape = getRotatedShape(state.currentDirection);
           const isValid = canPlacePlane(state.placeBoard, row, col, shape);
-          for (const part of shape) {
-            const r = row + part.r;
-            const c = col + part.c;
+          for (const [dx, dy] of shape) {
+            const r = row + dy,
+              c = col + dx;
             if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
               const cell = dom.myPlaceBoard.querySelector(
                 `[data-row='${r}'][data-col='${c}']`
@@ -618,98 +690,20 @@
               c.classList.remove("cell-preview-valid", "cell-preview-invalid")
             );
         }
-
         function updateInfo(text) {
           dom.infoPanel.textContent = text;
+          dom.infoPanel.classList.remove("fade-in");
+          void dom.infoPanel.offsetWidth; // Trigger reflow
+          dom.infoPanel.classList.add("fade-in");
         }
-
         function showTransition(title, message, buttonText = "OK") {
           dom.transition.title.textContent = title;
           dom.transition.message.textContent = message;
           dom.transition.button.textContent = buttonText;
-          dom.transition.overlay.style.display = "flex";
+          dom.transition.overlay.classList.remove("hidden");
         }
 
-        function renderBoard(container, boardData, type) {
-          for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-              const cell = container.querySelector(
-                `[data-row='${r}'][data-col='${c}']`
-              );
-              if (!cell) continue;
-              cell.className = "grid-cell";
-              const val = boardData[r][c];
-
-              // Sửa lỗi: Hiển thị đúng kết quả bắn trên cả hai bảng
-              switch (val) {
-                case "H":
-                  if (type === "place") cell.classList.add("cell-head");
-                  break;
-                case "B":
-                  if (type === "place") cell.classList.add("cell-placed");
-                  break;
-                case "D":
-                  cell.classList.add("cell-hit-head");
-                  break;
-                case "I":
-                  cell.classList.add("cell-hit-body");
-                  break;
-                case "M":
-                  cell.classList.add("cell-miss");
-                  break;
-              }
-            }
-          }
-        }
-
-        function updateUI() {
-          renderBoard(dom.myPlaceBoard, state.placeBoard, "place");
-          renderBoard(dom.opponentShootBoard, state.shootBoard, "shoot");
-
-          dom.controlsArea.style.display =
-            state.phase === "PLACE" ? "flex" : "none";
-          dom.readyButton.style.display =
-            state.planesPlaced >= PLANES_TO_PLACE ? "block" : "none";
-
-          dom.myPlaceBoard.classList.toggle(
-            "cursor-pointer",
-            state.phase === "PLACE" && state.planesPlaced < PLANES_TO_PLACE
-          );
-          dom.opponentShootBoard.classList.toggle(
-            "cursor-pointer",
-            state.phase === "SHOOT" && state.isMyTurn
-          );
-          dom.opponentShootBoard.classList.toggle(
-            "cursor-not-allowed",
-            state.phase === "SHOOT" && !state.isMyTurn
-          );
-
-          switch (state.phase) {
-            case "PLACE":
-              if (state.planesPlaced < PLANES_TO_PLACE) {
-                // UpdateInfo is handled by timer
-              } else {
-                updateInfo(
-                  `Đã đặt đủ ${PLANES_TO_PLACE} máy bay. Hãy bấm Sẵn Sàng!`
-                );
-              }
-              break;
-            case "WAITING":
-              updateInfo("Đang chờ đối thủ...");
-              break;
-            case "SHOOT":
-              updateInfo(
-                state.isMyTurn
-                  ? "Lượt của bạn! Hãy tấn công."
-                  : "Lượt của đối thủ. Xin chờ..."
-              );
-              break;
-            case "GAMEOVER":
-              updateInfo("TRÒ CHƠI KẾT THÚC!");
-              break;
-          }
-        }
-
+        // --- INITIALIZE GAME ---
         resetGame();
       });
     </script>
