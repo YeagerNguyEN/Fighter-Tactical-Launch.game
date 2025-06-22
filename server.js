@@ -68,7 +68,7 @@ function placePlaneOnBoard(board, headRow, headCol, shape) {
   board[headRow + shape[0][1]][headCol + shape[0][0]] = "H"; // Place head
   for (let i = 1; i < shape.length; i++) {
     const [dx, dy] = shape[i];
-    board[headRow + dy][col + dx] = "B"; // Place body parts
+    board[headRow + dy][headCol + dx] = "B"; // Place body parts
   }
 }
 
@@ -109,7 +109,6 @@ const startShootingPhase = (roomCode) => {
     return;
   }
 
-  // Clear the timer if it's still active (important for immediate transition)
   if (room.placementTimer) {
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
@@ -118,9 +117,10 @@ const startShootingPhase = (roomCode) => {
     );
   }
 
-  // Ensure all players have a placeBoard (generate for those who didn't submit)
+  // --- NEW LOGIC: Ensure all players have a placeBoard ---
   room.players.forEach((player) => {
     if (!player.ready || !player.placeBoard) {
+      // If player is not ready or their placeBoard is null, generate one for them
       player.placeBoard = generateRandomPlaceBoard();
       player.ready = true; // Mark as ready after generating board
       console.log(
@@ -128,18 +128,11 @@ const startShootingPhase = (roomCode) => {
       );
     }
   });
+  // --- END NEW LOGIC ---
 
   room.state = "shooting";
-  room.currentTurnIndex = 0; // Explicitly set the first turn to player 0
-
-  // Emit 'shootingPhaseStart' with the initial turn index and player info
-  io.to(roomCode).emit("shootingPhaseStart", {
-    currentTurnIndex: room.currentTurnIndex,
-    players: room.players.map((p) => ({
-      id: p.id,
-      playerIndex: p.playerIndex,
-    })),
-  });
+  io.to(roomCode).emit("shootingPhaseStart");
+  io.to(roomCode).emit("newTurn", room.currentTurnIndex);
 
   console.log(
     `[Server] Phòng ${roomCode}: BẮT ĐẦU BẮN. Lượt của người chơi ${room.currentTurnIndex}.`
@@ -199,6 +192,7 @@ io.on("connection", (socket) => {
       id: p.id,
       playerIndex: p.playerIndex,
     }));
+    // --- Cập nhật ở đây: Gửi roomCode lại cho client ---
     io.to(roomCode).emit("gameStart", {
       players: playerInfo,
       roomCode: roomCode,
@@ -246,7 +240,6 @@ io.on("connection", (socket) => {
 
     const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
     if (headCount !== 3) {
-      // Ensure exactly 3 planes are placed
       console.log(
         `[Server] planesPlaced: Player ${socket.id} submitted ${headCount} heads instead of 3. Sending error.`
       );
@@ -267,13 +260,7 @@ io.on("connection", (socket) => {
       );
     }
 
-    // --- FIX MỚI: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
     if (room.players.every((p) => p.ready)) {
-      if (room.placementTimer) {
-        clearTimeout(room.placementTimer);
-        room.placementTimer = null;
-        console.log(`[Server] Đã hủy timer vì cả hai đã ready`);
-      }
       console.log(
         `[Server] Phòng ${roomCode}: CẢ HAI người chơi đã sẵn sàng. Gọi startShootingPhase.`
       );
@@ -330,12 +317,11 @@ io.on("connection", (socket) => {
       `[Server] Target cell [${row}, ${col}] current value: ${currentShotValue}.`
     );
 
-    // Logic for M, I, D is here
     if (["D", "I", "M"].includes(currentShotValue)) {
       console.log(
         `[Server] Shoot failed for ${socket.id}: Cell [${row}, ${col}] already shot.`
       );
-      return; // Do not proceed if already shot
+      return;
     }
 
     let result = "M"; // Miss (Trượt)

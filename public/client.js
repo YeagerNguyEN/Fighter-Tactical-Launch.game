@@ -100,16 +100,26 @@ document.addEventListener("DOMContentLoaded", () => {
       state.playerIndex = self.playerIndex;
     }
     state.roomCode = data.roomCode; // Quan trọng: Đảm bảo roomCode được set cho người chơi tham gia
-    dom.lobby.style.display = "none";
-    dom.game.style.display = "flex";
-    state.phase = "PLACE";
-    initGameBoards();
-    updateUI();
-    console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
     console.log(
-      "[Client] Current client state after gameStart:",
-      JSON.parse(JSON.stringify(state))
-    );
+      `[Client] GameStart: state.roomCode set to ${state.roomCode} for player ${state.playerIndex}`
+    ); // Debug log
+
+    // <<< FIX MỚI: Dùng setTimeout để đảm bảo DOM được render và roomCode được set trước khi updateUI >>>
+    setTimeout(() => {
+      dom.lobby.style.display = "none";
+      dom.game.style.display = "flex";
+      state.phase = "PLACE";
+      initGameBoards();
+      updateUI(); // Gọi updateUI sau khi init boards và set phase
+      console.log(
+        "[Client] Received 'gameStart'. Transitioning to PLACE phase."
+      );
+      console.log(
+        "[Client] Current client state after gameStart:",
+        JSON.parse(JSON.stringify(state))
+      );
+    }, 50); // Một độ trễ nhỏ để DOM ổn định
+    // <<< END FIX >>>
   });
 
   socket.on("error", (message) => {
@@ -205,12 +215,17 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     // --- FIX: Chỉ gửi planesPlaced nếu roomCode đã được thiết lập ---
+    console.log(
+      `[Client] Before emitting planesPlaced (readyButton click): state.roomCode = ${state.roomCode}, playerIndex = ${state.playerIndex}`
+    ); // Debug log
     if (state.roomCode === null) {
       // Đảm bảo roomCode đã có giá trị
       updateInfo(
         "Lỗi: Mã phòng chưa được thiết lập. Vui lòng thử lại hoặc kết nối lại."
       );
-      console.error("[Client] Cannot send planesPlaced: roomCode is null.");
+      console.error(
+        "[Client] Cannot send planesPlaced: roomCode is null. Aborting."
+      );
       return;
     }
     // --- END FIX ---
@@ -280,9 +295,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (state.roomCode === null) {
-        // Kiểm tra lại roomCode
+        // Kiểm tra lại roomCode trước khi bắn
         updateInfo("Lỗi: Mã phòng không hợp lệ để bắn.");
-        console.error("[Client] Cannot shoot: roomCode is null.");
+        console.error("[Client] Cannot shoot: roomCode is null. Aborting.");
         return;
       }
 
@@ -357,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.phase = "SHOOT";
     state.isMyTurn = state.playerIndex === data.currentTurnIndex;
 
-    // 🔧 FIX: Đảm bảo lớp phủ chuyển tiếp bị ẩn ngay lập tức
+    // Đảm bảo lớp phủ chuyển tiếp bị ẩn ngay lập tức
     dom.transition.overlay.classList.add("hidden");
     dom.transition.overlay.classList.remove("flex");
 
@@ -517,17 +532,21 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
 
     // --- FIX: Vô hiệu hóa nút Ready cho đến khi roomCode được thiết lập ---
+    // Log giá trị để debug
+    console.log(
+      `[Client] updateUI: planesPlaced = ${state.planesPlaced}, roomCode = ${state.roomCode}`
+    );
     dom.readyButton.disabled = !(
       state.planesPlaced >= PLANES_PER_PLAYER && state.roomCode !== null
     );
-    // Thay vì display = 'block' / 'none', dùng disabled để trực quan hơn
-    // if (dom.readyButton.disabled) {
-    //     dom.readyButton.style.opacity = 0.5; // Làm mờ khi bị vô hiệu hóa
-    //     dom.readyButton.style.cursor = 'not-allowed';
-    // } else {
-    //     dom.readyButton.style.opacity = 1;
-    //     dom.readyButton.style.cursor = 'pointer';
-    // }
+
+    if (dom.readyButton.disabled) {
+      dom.readyButton.style.opacity = 0.5;
+      dom.readyButton.style.cursor = "not-allowed";
+    } else {
+      dom.readyButton.style.opacity = 1;
+      dom.readyButton.style.cursor = "pointer";
+    }
     // --- END FIX ---
 
     if (state.phase === "SHOOT" && state.isMyTurn) {
