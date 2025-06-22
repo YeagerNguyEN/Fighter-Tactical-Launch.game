@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const PLANES_PER_PLAYER = 3;
   const DIRECTIONS = ["down", "left", "up", "right"];
   const BASE_PLANE_SHAPE = [
-    [0, 0],
+    [0, 0], // Head relative to its own position
     [-1, 1],
     [0, 1],
     [1, 1],
@@ -47,14 +47,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetGame() {
     state = {
       roomCode: null,
-      playerIndex: -1,
+      playerIndex: -1, // Will be 0 or 1
       placeBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(0)),
-      shootBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
+      shootBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(null)), // Represents opponent's board from player's perspective
       planesPlaced: 0,
       phase: "LOBBY", // LOBBY, PLACE, SHOOT, GAMEOVER
       currentDirection: "down",
       lastHoveredCell: null,
-      isMyTurn: false,
+      isMyTurn: false, // Crucial for shooting phase
     };
     dom.lobby.style.display = "block";
     dom.game.style.display = "none";
@@ -85,8 +85,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("roomCreated", (roomCode) => {
-    state.roomCode = roomCode; // Player 0's roomCode is set here
-    state.playerIndex = 0;
+    state.roomCode = roomCode;
+    state.playerIndex = 0; // Creator is always player 0
     dom.roomCodeDisplay.textContent = `Mã phòng: ${roomCode}. Đang chờ đối thủ...`;
     console.log(
       `[Client] Received 'roomCreated'. Room Code: ${roomCode}, Player Index: ${state.playerIndex}.`
@@ -94,11 +94,17 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("gameStart", (data) => {
-    // Receive data object with roomCode
+    // data.players array will contain info for both players (including their IDs and playerIndex)
+    // Find my playerIndex from the data.players array if I'm the joining player
+    const self = data.players.find(p => p.id === socket.id);
+    if (self) {
+        state.playerIndex = self.playerIndex;
+    }
+    state.roomCode = data.roomCode; // Ensure roomCode is set for both players
+
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
     state.phase = "PLACE";
-    state.roomCode = data.roomCode; // --- FIX: Set roomCode for joining player ---
     initGameBoards();
     updateUI();
     console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
@@ -110,7 +116,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.on("error", (message) => {
     console.error(`[Client] Received error from server: ${message}`);
-    showTransition("Lỗi", message);
+    // Use a custom modal instead of alert for errors
+    showTransition("Lỗi", message, "Đóng");
   });
 
   // --- BOARD CREATION ---
@@ -131,9 +138,14 @@ document.addEventListener("DOMContentLoaded", () => {
         container.appendChild(cell);
       }
     }
-    container.addEventListener("mouseover", handleCellHover);
-    container.addEventListener("mouseout", handleCellMouseOut);
-    container.addEventListener("click", handleCellClick);
+    // Add event listeners based on board type for interactions
+    if (type === "place") {
+      container.addEventListener("mouseover", handleCellHover);
+      container.addEventListener("mouseout", handleCellMouseOut);
+      container.addEventListener("click", handleCellClick); // For placing planes
+    } else if (type === "shoot") {
+      container.addEventListener("click", handleCellClick); // For shooting
+    }
     console.log(`[Client] Board '${type}' created.`);
   }
 
@@ -174,6 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- EVENT HANDLERS ---
   dom.rotateButton.addEventListener("click", () => {
+    if (state.phase !== "PLACE") return; // Only allow rotation in placing phase
     const currentIndex = DIRECTIONS.indexOf(state.currentDirection);
     state.currentDirection = DIRECTIONS[(currentIndex + 1) % DIRECTIONS.length];
     if (state.lastHoveredCell) {
@@ -187,6 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   dom.readyButton.addEventListener("click", () => {
+    if (state.phase !== "PLACE") return; // Only allow ready in placing phase
     if (state.planesPlaced < PLANES_PER_PLAYER) {
       updateInfo(`Bạn cần đặt đủ ${PLANES_PER_PLAYER} máy bay.`);
       console.log(
@@ -194,7 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       return;
     }
-    state.phase = "WAITING";
+    state.phase = "WAITING"; // Transition to waiting for opponent
     socket.emit("planesPlaced", {
       roomCode: state.roomCode,
       placeBoard: state.placeBoard,
@@ -220,8 +234,10 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.transition.overlay.classList.add("hidden");
     dom.transition.overlay.classList.remove("flex");
     if (state.phase === "GAMEOVER") {
-      resetGame();
-      location.reload();
+      resetGame(); // Reset game state only if it was a game over scenario
+      // For a full refresh (as in original code), you might still use location.reload()
+      // but generally, resetting state should be enough for "play again"
+      // location.reload(); // Re-enable if a full page reload is desired after game over
     }
   });
 
@@ -247,21 +263,32 @@ document.addEventListener("DOMContentLoaded", () => {
           `[Client] Plane placed at [${r}, ${c}]. Planes placed: ${state.planesPlaced}.`
         );
       } else {
+        updateInfo("Không thể đặt máy bay ở đây!");
         console.log(
           `[Client] Cannot place plane at [${r}, ${c}]. Invalid position or occupied.`
         );
       }
-    } else if (state.phase === "SHOOT" && type === "shoot" && state.isMyTurn) {
-      if (state.shootBoard[r][c] === null) {
+    } else if (state.phase === "SHOOT" && type === "shoot") {
+        if (!state.isMyTurn) {
+            updateInfo("Không phải lượt của bạn!");
+            console.log("[Client] Cannot shoot: Not your turn.");
+            return;
+        }
+
+        // Prevent shooting already hit/missed cells (client-side check for better UX)
+        if (state.shootBoard[r][c] !== null) {
+            updateInfo("Ô này đã bị bắn rồi!");
+            console.log(
+                `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
+            );
+            return;
+        }
+
         socket.emit("shoot", { roomCode: state.roomCode, row: r, col: c });
         console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
-      } else {
-        console.log(
-          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
-        );
-      }
-    } else if (state.phase === "SHOOT" && !state.isMyTurn) {
-      console.log("[Client] Cannot shoot: Not your turn.");
+        // Immediately disable shooting visually on client side
+        state.isMyTurn = false; // Optimistic update, server will confirm with newTurn
+        updateUI();
     } else if (state.phase !== "SHOOT" && type === "shoot") {
       console.log(
         `[Client] Cannot shoot: Not in SHOOT phase (current phase: ${state.phase}).`
@@ -318,8 +345,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[Client] Received 'opponentReady'.");
   });
 
-  socket.on("shootingPhaseStart", () => {
+  // UPDATED: Receive currentTurnIndex from server
+  socket.on("shootingPhaseStart", (data) => {
     state.phase = "SHOOT";
+    state.isMyTurn = state.playerIndex === data.currentTurnIndex; // Set initial turn
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -327,11 +356,11 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.placementTimerDisplay.classList.add("hidden");
     showTransition(
       "Trận Chiến Bắt Đầu!",
-      "Lượt bắn sẽ được quyết định ngay sau đây."
+      state.isMyTurn ? "Đến lượt bạn bắn trước!" : "Chờ đối thủ bắn trước."
     );
-    updateUI();
+    updateUI(); // IMPORTANT: Update UI after setting isMyTurn
     console.log(
-      "[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase."
+      `[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase. Initial turn: ${data.currentTurnIndex}, My turn: ${state.isMyTurn}.`
     );
     console.log(
       "[Client] Current client state after shootingPhaseStart:",
@@ -341,7 +370,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.on("newTurn", (turnIndex) => {
     state.isMyTurn = state.playerIndex === turnIndex;
-    updateUI();
+    updateUI(); // IMPORTANT: Update UI after setting isMyTurn
     console.log(
       `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
     );
@@ -387,7 +416,7 @@ document.addEventListener("DOMContentLoaded", () => {
         "Bạn đã thắng do đối thủ thoát giữa chừng.",
         "Về Sảnh"
       );
-      state.phase = "GAMEOVER";
+      state.phase = "GAMEOVER"; // Set phase to GAMEOVER so transition button resets
     }
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
@@ -427,6 +456,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateInfo(text) {
     dom.infoPanel.textContent = text;
     dom.infoPanel.classList.remove("fade-in");
+    // This forces a reflow to restart the animation
     void dom.infoPanel.offsetWidth;
     dom.infoPanel.classList.add("fade-in");
   }
@@ -436,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.transition.message.textContent = message;
     dom.transition.button.textContent = buttonText;
     dom.transition.overlay.classList.remove("hidden");
-    dom.transition.overlay.classList.add("flex");
+    dom.transition.overlay.classList.add("flex"); // Use flex to center
   }
 
   function renderBoard(container, boardData, type) {
@@ -446,20 +476,24 @@ document.addEventListener("DOMContentLoaded", () => {
           `[data-row='${r}'][data-col='${c}']`
         );
         if (!cell) continue;
-        cell.className = "grid-cell";
+        cell.className = "grid-cell"; // Reset all classes first
         cell.dataset.type = type;
         const val = boardData[r][c];
 
         if (type === "place") {
+          // My board, shows my planes and where opponent shot
           if (val === "H") cell.classList.add("cell-head");
           else if (val === "B") cell.classList.add("cell-placed");
           else if (val === "D") cell.classList.add("cell-hit-head");
           else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
+          else cell.classList.add("cell-empty"); // Ensure empty cells have a base style
         } else {
+          // Opponent's board, only shows my shots
           if (val === "D") cell.classList.add("cell-hit-head");
           else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
+          else cell.classList.add("cell-empty"); // Ensure empty cells have a base style
         }
       }
     }
@@ -469,12 +503,21 @@ document.addEventListener("DOMContentLoaded", () => {
     renderBoard(dom.myPlaceBoard, state.placeBoard, "place");
     renderBoard(dom.opponentShootBoard, state.shootBoard, "shoot");
 
+    // Control display of placement controls
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
     dom.readyButton.style.display =
       state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
 
-    dom.opponentShootBoard.style.cursor =
-      state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "default";
+    // Control opponent board interactivity
+    if (state.phase === "SHOOT" && state.isMyTurn) {
+        dom.opponentShootBoard.style.cursor = "crosshair";
+        dom.opponentShootBoard.classList.remove("disabled-board");
+    } else {
+        dom.opponentShootBoard.style.cursor = "default";
+        // Visually disable the board if it's not the shooting phase or not my turn
+        dom.opponentShootBoard.classList.add("disabled-board");
+    }
+
 
     let infoMessage = "";
     switch (state.phase) {

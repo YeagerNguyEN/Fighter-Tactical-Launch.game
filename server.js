@@ -117,7 +117,7 @@ const startShootingPhase = (roomCode) => {
     );
   }
 
-  // --- NEW LOGIC: Ensure all players have a placeBoard ---
+  // Ensure all players have a placeBoard and are marked ready
   room.players.forEach((player) => {
     if (!player.ready || !player.placeBoard) {
       // If player is not ready or their placeBoard is null, generate one for them
@@ -128,11 +128,20 @@ const startShootingPhase = (roomCode) => {
       );
     }
   });
-  // --- END NEW LOGIC ---
 
   room.state = "shooting";
-  io.to(roomCode).emit("shootingPhaseStart");
-  io.to(roomCode).emit("newTurn", room.currentTurnIndex);
+  room.currentTurnIndex = 0; // Explicitly set the first turn to player 0
+
+  // <<< IMPORTANT CHANGE HERE >>>
+  // Emit 'shootingPhaseStart' with the initial turn index and player info
+  io.to(roomCode).emit("shootingPhaseStart", {
+    currentTurnIndex: room.currentTurnIndex,
+    players: room.players.map((p) => ({
+      id: p.id,
+      playerIndex: p.playerIndex,
+    })), // Include player info for client
+  });
+  // <<< END IMPORTANT CHANGE >>>
 
   console.log(
     `[Server] Phòng ${roomCode}: BẮT ĐẦU BẮN. Lượt của người chơi ${room.currentTurnIndex}.`
