@@ -109,7 +109,7 @@ const startShootingPhase = (roomCode) => {
     return;
   }
 
-  // Clear the timer if it's still active
+  // Clear the timer if it's still active (important for immediate transition)
   if (room.placementTimer) {
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
@@ -135,10 +135,7 @@ const startShootingPhase = (roomCode) => {
   // Emit 'shootingPhaseStart' with the initial turn index and player info
   io.to(roomCode).emit("shootingPhaseStart", {
     currentTurnIndex: room.currentTurnIndex,
-    players: room.players.map((p) => ({
-      id: p.id,
-      playerIndex: p.playerIndex,
-    })),
+    players: room.players.map(p => ({ id: p.id, playerIndex: p.playerIndex }))
   });
 
   console.log(
@@ -245,8 +242,7 @@ io.on("connection", (socket) => {
     }
 
     const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
-    if (headCount !== 3) {
-      // Ensure exactly 3 planes are placed
+    if (headCount !== 3) { // Ensure exactly 3 planes are placed
       console.log(
         `[Server] planesPlaced: Player ${socket.id} submitted ${headCount} heads instead of 3. Sending error.`
       );
@@ -267,8 +263,13 @@ io.on("connection", (socket) => {
       );
     }
 
-    // <<< IMPORTANT CHANGE HERE: Check if all players are ready to immediately start shooting phase >>>
+    // --- FIX MỚI: Hủy bỏ timer và bắt đầu giai đoạn bắn ngay lập tức nếu cả hai đã sẵn sàng ---
     if (room.players.every((p) => p.ready)) {
+      if (room.placementTimer) {
+        clearTimeout(room.placementTimer);
+        room.placementTimer = null;
+        console.log(`[Server] Đã hủy timer vì cả hai đã ready`);
+      }
       console.log(
         `[Server] Phòng ${roomCode}: CẢ HAI người chơi đã sẵn sàng. Gọi startShootingPhase.`
       );

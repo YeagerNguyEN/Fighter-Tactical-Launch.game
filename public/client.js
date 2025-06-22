@@ -322,8 +322,9 @@ document.addEventListener("DOMContentLoaded", () => {
       `[Client] Received 'placementTimerStarted' with ${timeLeft} seconds.`
     );
 
-    // Only start if interval is not already running or not in WAITING state (already ready)
-    if (!placementCountdownInterval && state.phase !== "WAITING") {
+    // Only start if interval is not already running and we are in PLACE phase
+    // (A player who already clicked ready would be in WAITING phase)
+    if (!placementCountdownInterval && state.phase === "PLACE") {
       placementCountdownInterval = setInterval(() => {
         timeLeft--;
         dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
@@ -336,7 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 1000);
     } else {
       console.log(
-        "[Client] Placement timer already running or player already ready."
+        "[Client] Placement timer not started: Already running or not in PLACE phase."
       );
     }
   });
@@ -353,16 +354,22 @@ document.addEventListener("DOMContentLoaded", () => {
   socket.on("shootingPhaseStart", (data) => {
     state.phase = "SHOOT";
     state.isMyTurn = state.playerIndex === data.currentTurnIndex; // Set initial turn
+
+    // 🔧 FIX MỚI: Đảm bảo lớp phủ chuyển tiếp bị ẩn khi giai đoạn bắn bắt đầu
+    dom.transition.overlay.classList.add("hidden");
+    dom.transition.overlay.classList.remove("flex");
+
     if (placementCountdownInterval) {
       // Clear any remaining client-side timer
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
     }
     dom.placementTimerDisplay.classList.add("hidden");
-    showTransition(
-      "Trận Chiến Bắt Đầu!",
+    // 🔧 THAY ĐỔI: Không gọi showTransition nữa, thay vào đó cập nhật infoPanel trực tiếp
+    updateInfo(
       state.isMyTurn ? "Đến lượt bạn bắn trước!" : "Chờ đối thủ bắn trước."
     );
+
     updateUI(); // IMPORTANT: Update UI after setting isMyTurn
     console.log(
       `[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase. Initial turn: ${data.currentTurnIndex}, My turn: ${state.isMyTurn}.`
@@ -517,10 +524,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Control opponent board interactivity based on phase and turn
     if (state.phase === "SHOOT" && state.isMyTurn) {
       dom.opponentShootBoard.style.cursor = "crosshair";
+      dom.opponentShootBoard.style.pointerEvents = "auto"; // Enable clicks explicitly
       dom.opponentShootBoard.classList.remove("disabled-board");
     } else {
       dom.opponentShootBoard.style.cursor = "default";
-      // Visually disable the board if it's not the shooting phase or not my turn
+      dom.opponentShootBoard.style.pointerEvents = "none"; // Disable clicks explicitly
       dom.opponentShootBoard.classList.add("disabled-board");
     }
 
