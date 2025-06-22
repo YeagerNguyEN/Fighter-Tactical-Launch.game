@@ -1,3 +1,4 @@
+// client.js
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
 
@@ -47,11 +48,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetGame() {
     state = {
       roomCode: null,
-      playerIndex: -1, // Sẽ được xác định bởi server
+      playerIndex: -1,
       placeBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(0)),
       shootBoard: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
       planesPlaced: 0,
-      phase: "LOBBY", // LOBBY, PLACE, WAITING, SHOOT, GAMEOVER
+      phase: "LOBBY", // LOBBY, PLACE, SHOOT, GAMEOVER
       currentDirection: "down",
       lastHoveredCell: null,
       isMyTurn: false,
@@ -85,36 +86,24 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("roomCreated", (roomCode) => {
-    state.roomCode = roomCode;
-    state.playerIndex = 0; // Người tạo phòng luôn là player 0
+    state.roomCode = roomCode; // Player 0's roomCode is set here
+    state.playerIndex = 0;
     dom.roomCodeDisplay.textContent = `Mã phòng: ${roomCode}. Đang chờ đối thủ...`;
     console.log(
       `[Client] Received 'roomCreated'. Room Code: ${roomCode}, Player Index: ${state.playerIndex}.`
     );
   });
 
-  // --- SỬA LỖI LỚN: Cập nhật playerIndex cho CẢ HAI người chơi ---
   socket.on("gameStart", (data) => {
-    const { players, roomCode } = data;
-    const myPlayerInfo = players.find((p) => p.id === socket.id);
-
-    if (!myPlayerInfo) {
-        console.error("[Client] CRITICAL: Could not find my player info in gameStart data.");
-        showTransition("Lỗi Nghiêm Trọng", "Không thể xác định thông tin người chơi. Vui lòng tải lại trang.");
-        return;
-    }
-    
-    state.playerIndex = myPlayerInfo.playerIndex;
-    state.roomCode = roomCode;
-    state.phase = "PLACE";
-
+    // Receive data object with roomCode and playerIndex
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
-    
+    state.phase = "PLACE";
+    state.roomCode = data.roomCode;
+    state.playerIndex = data.playerIndex; // --- FIX: Set playerIndex for joining player ---
     initGameBoards();
     updateUI();
-    console.log(`[Client] Received 'gameStart'. Transitioning to PLACE phase.`);
-    console.log(`[Client] My assigned Player Index is: ${state.playerIndex}`);
+    console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
     console.log(
       "[Client] Current client state after gameStart:",
       JSON.parse(JSON.stringify(state))
@@ -123,9 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.on("error", (message) => {
     console.error(`[Client] Received error from server: ${message}`);
-    showTransition("Lỗi", message, "Về Sảnh");
-    // Khi có lỗi nghiêm trọng, ta nên cho người chơi về sảnh
-    state.phase = "GAMEOVER"; 
+    showTransition("Lỗi", message);
   });
 
   // --- BOARD CREATION ---
@@ -224,6 +211,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Emitted 'planesPlaced'. Transitioned to WAITING phase."
     );
+    console.log(
+      "[Client] Current client state after planesPlaced:",
+      JSON.parse(JSON.stringify(state))
+    );
   });
 
   dom.transition.button.addEventListener("click", () => {
@@ -232,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.transition.overlay.classList.remove("flex");
     if (state.phase === "GAMEOVER") {
       resetGame();
-      location.reload(); // Reload to ensure a clean state
+      location.reload();
     }
   });
 
@@ -268,7 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
       } else {
         console.log(
-          `[Client] Cell [${r}, ${c}] already shot. Cannot shoot again.`
+          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
         );
       }
     } else if (state.phase === "SHOOT" && !state.isMyTurn) {
@@ -316,30 +307,21 @@ document.addEventListener("DOMContentLoaded", () => {
         clearInterval(placementCountdownInterval);
         placementCountdownInterval = null;
         dom.placementTimerDisplay.classList.add("hidden");
-        // Don't do anything else, server will handle the timeout
-        console.log("[Client] Placement timer finished on client.");
+        console.log("[Client] Placement timer finished.");
       }
     }, 1000);
   });
 
   socket.on("opponentReady", () => {
-    // Only show this if we are still placing
-    if (state.phase === "PLACE" || state.phase === "WAITING") {
-       updateInfo("Đối thủ của bạn đã sẵn sàng!");
-    }
+    showTransition(
+      "Đối Thủ Đã Sẵn Sàng",
+      "Đối thủ của bạn đã đặt xong máy bay. Hãy nhanh lên!"
+    );
     console.log("[Client] Received 'opponentReady'.");
   });
 
-  socket.on("shootingPhaseStart", (data) => {
+  socket.on("shootingPhaseStart", () => {
     state.phase = "SHOOT";
-    
-    // Server might send updated boards if a player timed out.
-    // Let's re-render our board just in case we were the one who timed out.
-    if(data && data.timedOutPlayerBoard && data.timedOutPlayerId === socket.id) {
-        state.placeBoard = data.timedOutPlayerBoard;
-        console.log("[Client] My board was randomly generated by server due to timeout.");
-    }
-
     if (placementCountdownInterval) {
       clearInterval(placementCountdownInterval);
       placementCountdownInterval = null;
@@ -353,13 +335,21 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase."
     );
+    console.log(
+      "[Client] Current client state after shootingPhaseStart:",
+      JSON.parse(JSON.stringify(state))
+    );
   });
 
   socket.on("newTurn", (turnIndex) => {
     state.isMyTurn = state.playerIndex === turnIndex;
     updateUI();
     console.log(
-      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (My Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
+      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
+    );
+    console.log(
+      "[Client] Current client state after newTurn:",
+      JSON.parse(JSON.stringify(state))
     );
   });
 
@@ -374,10 +364,11 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       state.placeBoard[row][col] = result;
       console.log(
-        `[Client] Opponent shot at my board at [${row}, ${col}] resulted in: ${result}.`
+        `[Client] Opponent shot at [${row}, ${col}] resulted in: ${result}.`
       );
     }
     updateUI();
+    console.log(`[Client] Processed shotResult. Boards updated.`);
   });
 
   socket.on("gameOver", (winnerIndex) => {
@@ -411,7 +402,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- PREVIEW & UI ---
   function drawPreview(row, col) {
-    if (state.planesPlaced >= PLANES_PER_PLAYER) return;
     const shape = getRotatedShape(state.currentDirection);
     const isValid = canPlacePlane(state.placeBoard, row, col, shape);
     for (const [dx, dy] of shape) {
@@ -438,7 +428,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateInfo(text) {
     dom.infoPanel.textContent = text;
-    // CSS trick to re-trigger animation
     dom.infoPanel.classList.remove("fade-in");
     void dom.infoPanel.offsetWidth;
     dom.infoPanel.classList.add("fade-in");
@@ -459,7 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
           `[data-row='${r}'][data-col='${c}']`
         );
         if (!cell) continue;
-        cell.className = "grid-cell"; // Reset classes
+        cell.className = "grid-cell";
         cell.dataset.type = type;
         const val = boardData[r][c];
 
@@ -469,7 +458,7 @@ document.addEventListener("DOMContentLoaded", () => {
           else if (val === "D") cell.classList.add("cell-hit-head");
           else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
-        } else { // shoot board
+        } else {
           if (val === "D") cell.classList.add("cell-hit-head");
           else if (val === "I") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
@@ -484,10 +473,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
     dom.readyButton.style.display =
-      state.phase === "PLACE" && state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
+      state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
 
     dom.opponentShootBoard.style.cursor =
-      state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "not-allowed";
+      state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "default";
 
     let infoMessage = "";
     switch (state.phase) {
@@ -495,12 +484,7 @@ document.addEventListener("DOMContentLoaded", () => {
         infoMessage = "Chờ người chơi hoặc tạo/tham gia phòng.";
         break;
       case "PLACE":
-        const planesLeft = PLANES_PER_PLAYER - state.planesPlaced;
-        if (planesLeft > 0) {
-           infoMessage = `Hãy đặt ${planesLeft} máy bay nữa. Xoay và click để đặt.`;
-        } else {
-           infoMessage = `Bạn đã đặt đủ ${PLANES_PER_PLAYER} máy bay. Hãy nhấn "Sẵn sàng"!`;
-        }
+        infoMessage = `Hãy đặt máy bay ${state.planesPlaced}/${PLANES_PER_PLAYER}. Xoay và click để đặt.`;
         break;
       case "WAITING":
         infoMessage = "Đang chờ đối thủ đặt máy bay...";
@@ -519,7 +503,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateInfo(infoMessage);
 
     console.log(
-      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Player Index: ${state.playerIndex}`
+      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}, Room Code: ${state.roomCode}`
     );
   }
 

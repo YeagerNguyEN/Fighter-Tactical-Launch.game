@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -8,7 +9,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "*", // Cho phép tất cả các tên miền, an toàn cho Render
     methods: ["GET", "POST"],
   },
 });
@@ -19,12 +20,12 @@ app.get("/", (req, res) => {
 });
 
 const rooms = {};
-const PLACEMENT_TIME_LIMIT = 60000; // Tăng lên 60 giây cho thoải mái
+const PLACEMENT_TIME_LIMIT = 30000; // 30 giây
 const ROWS = 10;
 const COLS = 10;
 const PLANES_PER_PLAYER = 3;
 const BASE_PLANE_SHAPE = [
-  [0, 0],
+  [0, 0], // Head relative to its own position
   [-1, 1],
   [0, 1],
   [1, 1],
@@ -55,6 +56,7 @@ function canPlacePlane(board, row, col, shape) {
   for (const [dx, dy] of shape) {
     const r = row + dy;
     const c = col + dx;
+    // Check bounds and if cell is already occupied
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== 0) {
       return false;
     }
@@ -63,18 +65,20 @@ function canPlacePlane(board, row, col, shape) {
 }
 
 function placePlaneOnBoard(board, headRow, headCol, shape) {
-  board[headRow + shape[0][1]][headCol + shape[0][0]] = "H";
+  // Head is the first element in BASE_PLANE_SHAPE (0,0) relative to itself
+  board[headRow + shape[0][1]][headCol + shape[0][0]] = "H"; // Place head
   for (let i = 1; i < shape.length; i++) {
     const [dx, dy] = shape[i];
-    board[headRow + dy][headCol + dx] = "B";
+    board[headRow + dy][headCol + dx] = "B"; // Place body parts
   }
 }
 
+// Function to generate a random valid placeBoard for a player
 function generateRandomPlaceBoard() {
   let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   let planesPlaced = 0;
-  let attempts = 0; // Prevent infinite loops
-  while (planesPlaced < PLANES_PER_PLAYER && attempts < 1000) {
+
+  while (planesPlaced < PLANES_PER_PLAYER) {
     const randomRow = Math.floor(Math.random() * ROWS);
     const randomCol = Math.floor(Math.random() * COLS);
     const randomDirection =
@@ -85,7 +89,6 @@ function generateRandomPlaceBoard() {
       placePlaneOnBoard(board, randomRow, randomCol, shape);
       planesPlaced++;
     }
-    attempts++;
   }
   return board;
 }
@@ -93,64 +96,52 @@ function generateRandomPlaceBoard() {
 
 const startShootingPhase = (roomCode) => {
   const room = rooms[roomCode];
+  console.log(`[Server] Calling startShootingPhase for room ${roomCode}`);
   console.log(
-    `[Server] Attempting to start shooting phase for room ${roomCode}`
+    `[Server] Room state before phase change check: ${
+      room ? room.state : "N/A"
+    }`
   );
 
   if (!room || room.state !== "placing") {
     console.log(
-      `[Server] Aborting startShootingPhase: Room ${roomCode} not in 'placing' state or does not exist. Current state: ${
-        room ? room.state : "N/A"
-      }`
+      `[Server] startShootingPhase: Room ${roomCode} is not in 'placing' state or does not exist. Aborting.`
     );
     return;
   }
 
-  // --- CẢI TIẾN: Hủy timer một cách an toàn ---
   if (room.placementTimer) {
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
-    console.log(`[Server] Cleared placement timer for room ${roomCode}.`);
+    console.log(
+      `[Server] startShootingPhase: Cleared placement timer for room ${roomCode}.`
+    );
   }
 
-  // --- LOGIC CŨ VẪN RẤT TỐT: Đảm bảo người chơi có bàn cờ ---
+  // --- NEW LOGIC: Ensure all players have a placeBoard ---
   room.players.forEach((player) => {
     if (!player.ready || !player.placeBoard) {
+      // If player is not ready or their placeBoard is null, generate one for them
       player.placeBoard = generateRandomPlaceBoard();
-      player.ready = true;
+      player.ready = true; // Mark as ready after generating board
       console.log(
-        `[Server] Player ${player.playerIndex} (${player.id}) timed out. Generated a random board.`
+        `[Server] Player ${player.playerIndex} (${player.id}) did not submit placeBoard. Generated random board for them.`
       );
-      // Gửi lại bàn cờ được tạo ngẫu nhiên cho client đó để UI được đồng bộ
-      io.to(player.id).emit("shootingPhaseStart", {
-        timedOutPlayerId: player.id,
-        timedOutPlayerBoard: player.placeBoard,
-      });
     }
   });
+  // --- END NEW LOGIC ---
 
   room.state = "shooting";
-
-  // Gửi cho những người chơi không bị timeout
-  const nonTimedOutPlayers = room.players.filter((p) => !p.timedOut);
-  nonTimedOutPlayers.forEach((p) => {
-    // Nếu client chưa nhận event từ việc timeout ở trên, gửi event bình thường
-    if (!io.sockets.sockets.get(p.id).emittedShootingPhase) {
-      io.to(p.id).emit("shootingPhaseStart");
-    }
-  });
-
-  // Chọn lượt đi ngẫu nhiên
-  room.currentTurnIndex = Math.floor(Math.random() * 2);
+  io.to(roomCode).emit("shootingPhaseStart");
   io.to(roomCode).emit("newTurn", room.currentTurnIndex);
 
   console.log(
-    `[Server] Room ${roomCode}: SHOOTING PHASE STARTED. Turn starts with player ${room.currentTurnIndex}.`
+    `[Server] Phòng ${roomCode}: BẮT ĐẦU BẮN. Lượt của người chơi ${room.currentTurnIndex}.`
   );
 };
 
 io.on("connection", (socket) => {
-  console.log(`[Server] User connected: ${socket.id}`);
+  console.log(`[Server] Người dùng đã kết nối: ${socket.id}`);
 
   socket.on("createRoom", () => {
     let roomCode;
@@ -162,22 +153,27 @@ io.on("connection", (socket) => {
       players: [
         { id: socket.id, playerIndex: 0, ready: false, placeBoard: null },
       ],
-      state: "waiting",
-      currentTurnIndex: 0, // Sẽ được random lại khi bắt đầu bắn
-      placementTimer: null,
+      state: "waiting", // Initial state
+      currentTurnIndex: 0,
     };
 
     socket.join(roomCode);
     socket.emit("roomCreated", roomCode);
-    console.log(`[Server] Room ${roomCode} created by ${socket.id}`);
+    console.log(`[Server] Phòng ${roomCode} đã được tạo bởi ${socket.id}`);
   });
 
   socket.on("joinRoom", (roomCode) => {
     const room = rooms[roomCode];
     if (!room) {
+      console.log(
+        `[Server] Lỗi: ${socket.id} thử tham gia phòng ${roomCode} không tồn tại.`
+      );
       return socket.emit("error", "Phòng không tồn tại.");
     }
     if (room.players.length >= 2) {
+      console.log(
+        `[Server] Lỗi: ${socket.id} thử tham gia phòng ${roomCode} đã đầy.`
+      );
       return socket.emit("error", "Phòng đã đầy.");
     }
 
@@ -186,116 +182,162 @@ io.on("connection", (socket) => {
       id: socket.id,
       playerIndex: 1,
       ready: false,
-      placeBoard: null,
+      placeBoard: null, // Mặc định là null
     });
-    room.state = "placing";
+    room.state = "placing"; // Room state changes to placing once 2 players are in
     console.log(
-      `[Server] ${socket.id} joined room ${roomCode}. State: ${room.state}`
+      `[Server] ${socket.id} đã tham gia phòng ${roomCode}. Trạng thái phòng: ${room.state}`
     );
 
     const playerInfo = room.players.map((p) => ({
       id: p.id,
       playerIndex: p.playerIndex,
     }));
-
-    // --- SỬA LỖI: Gửi thông tin game cho CẢ HAI client trong phòng ---
-    io.to(roomCode).emit("gameStart", {
-      players: playerInfo,
-      roomCode: roomCode,
+    // --- Cập nhật ở đây: Gửi roomCode và playerIndex cho từng client ---
+    room.players.forEach((p) => {
+      io.to(p.id).emit("gameStart", {
+        roomCode,
+        playerIndex: p.playerIndex,
+        players: playerInfo,
+      });
     });
     console.log(
-      `[Server] Room ${roomCode}: Emitted 'gameStart' to all players.`
+      `[Server] Phòng ${roomCode}: Trò chơi bắt đầu (giai đoạn đặt). Gửi thông tin gameStart cho client.`
     );
 
     io.to(roomCode).emit("placementTimerStarted", PLACEMENT_TIME_LIMIT);
     console.log(
-      `[Server] Room ${roomCode}: Placement timer started (${
+      `[Server] Phòng ${roomCode}: Bắt đầu đếm ngược đặt máy bay (${
         PLACEMENT_TIME_LIMIT / 1000
       }s).`
     );
-
     room.placementTimer = setTimeout(() => {
-      console.log(`[Server] Room ${roomCode}: Placement time is up.`);
+      console.log(
+        `[Server] Phòng ${roomCode}: Hết giờ đặt máy bay (tự động chuyển giai đoạn).`
+      );
       startShootingPhase(roomCode);
     }, PLACEMENT_TIME_LIMIT);
   });
 
   socket.on("planesPlaced", ({ roomCode, placeBoard }) => {
     const room = rooms[roomCode];
+    console.log(
+      `[Server] planesPlaced received from ${
+        socket.id
+      } for room ${roomCode}. Room state: ${room ? room.state : "N/A"}`
+    );
+
     if (!room || room.state !== "placing") {
-      return console.log(
-        `[Server] 'planesPlaced' ignored. Room ${roomCode} not in 'placing' state.`
+      console.log(
+        `[Server] planesPlaced: Room ${roomCode} is not in 'placing' state or does not exist. Aborting.`
       );
+      return;
     }
 
     const player = room.players.find((p) => p.id === socket.id);
-    if (!player) return;
-
-    // Validate board
-    const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
-    if (headCount !== PLANES_PER_PLAYER) {
-      return socket.emit(
-        "error",
-        `Bạn phải đặt đúng ${PLANES_PER_PLAYER} máy bay.`
+    if (!player) {
+      console.log(
+        `[Server] planesPlaced: Player ${socket.id} not found in room ${roomCode}. Aborting.`
       );
+      return;
+    }
+
+    const headCount = placeBoard.flat().filter((cell) => cell === "H").length;
+    if (headCount !== 3) {
+      console.log(
+        `[Server] planesPlaced: Player ${socket.id} submitted ${headCount} heads instead of 3. Sending error.`
+      );
+      return socket.emit("error", `Bạn phải đặt đúng 3 máy bay.`);
     }
 
     player.placeBoard = placeBoard;
     player.ready = true;
     console.log(
-      `[Server] Room ${roomCode}: Player ${player.playerIndex} is ready.`
+      `[Server] Phòng ${roomCode}: Người chơi ${player.playerIndex} đã sẵn sàng. ready: ${player.ready}`
     );
 
     const opponent = room.players.find((p) => p.id !== socket.id);
     if (opponent) {
       io.to(opponent.id).emit("opponentReady");
+      console.log(
+        `[Server] Phòng ${roomCode}: Thông báo opponentReady tới ${opponent.id}. Đối thủ ready: ${opponent.ready}.`
+      );
     }
 
-    // --- CẢI TIẾN: Hủy timer khi cả hai đã sẵn sàng ---
     if (room.players.every((p) => p.ready)) {
       console.log(
-        `[Server] Room ${roomCode}: All players are ready. Starting shooting phase.`
+        `[Server] Phòng ${roomCode}: CẢ HAI người chơi đã sẵn sàng. Gọi startShootingPhase.`
       );
       startShootingPhase(roomCode);
+    } else {
+      console.log(`[Server] Phòng ${roomCode}: Chưa đủ người chơi sẵn sàng.`);
     }
   });
 
   socket.on("shoot", ({ roomCode, row, col }) => {
     const room = rooms[roomCode];
-    if (!room || room.state !== "shooting") return;
+    console.log(
+      `[Server] Shoot request from ${socket.id} for room ${roomCode} at [${row}, ${col}].`
+    );
+    console.log(`[Server] Current Room state: ${room ? room.state : "N/A"}.`);
+
+    if (!room || room.state !== "shooting") {
+      console.log(
+        `[Server] Shoot failed for ${socket.id}: Room ${roomCode} not found or not in 'shooting' phase.`
+      );
+      return;
+    }
 
     const shooter = room.players.find((p) => p.id === socket.id);
     if (!shooter || shooter.playerIndex !== room.currentTurnIndex) {
-      console.log(`[Server] Invalid turn shoot attempt by ${socket.id}`);
+      console.log(
+        `[Server] Shoot failed for ${
+          socket.id
+        }: Not their turn (current turn: ${room.currentTurnIndex}, shooter: ${
+          shooter ? shooter.playerIndex : "N/A"
+        }).`
+      );
       return;
     }
 
     const targetPlayer = room.players.find((p) => p.id !== socket.id);
-    if (!targetPlayer || !targetPlayer.placeBoard) {
-      console.error(
-        `[Server] CRITICAL ERROR: Target player or their board is missing in room ${roomCode}`
+    if (!targetPlayer) {
+      console.log(
+        `[Server] Shoot failed for ${socket.id}: Target player not found in room.`
       );
-      return socket.emit("error", "Lỗi server: không tìm thấy đối thủ.");
+      return;
+    }
+
+    if (!targetPlayer.placeBoard) {
+      console.error(
+        `[Server] CRITICAL ERROR: Target player (${targetPlayer.id}) placeBoard is NULL at SHOOT phase! This should not happen.`
+      );
+      socket.emit("error", "Lỗi nội bộ server: Bảng đối thủ không hợp lệ.");
+      return;
     }
 
     const currentShotValue = targetPlayer.placeBoard[row][col];
+    console.log(
+      `[Server] Target cell [${row}, ${col}] current value: ${currentShotValue}.`
+    );
+
     if (["D", "I", "M"].includes(currentShotValue)) {
       console.log(
-        `[Server] Player ${socket.id} shot an already targeted cell.`
+        `[Server] Shoot failed for ${socket.id}: Cell [${row}, ${col}] already shot.`
       );
-      return; // Ô này đã được bắn, không làm gì cả.
+      return;
     }
 
-    let result = "M"; // Miss
+    let result = "M"; // Miss (Trượt)
     if (currentShotValue === "H") {
-      result = "D"; // Destroyed
+      result = "D"; // Destroyed (Phá hủy đầu)
     } else if (currentShotValue === "B") {
-      result = "I"; // Hit Body
+      result = "I"; // Hit Body (Trúng thân)
     }
 
     targetPlayer.placeBoard[row][col] = result;
     console.log(
-      `[Server] Shot at [${row}, ${col}] by Player ${shooter.playerIndex} resulted in ${result}.`
+      `[Server] Shot result for ${socket.id} at [${row}, ${col}]: ${result}.`
     );
 
     io.to(roomCode).emit("shotResult", {
@@ -305,53 +347,54 @@ io.on("connection", (socket) => {
       result,
     });
 
-    // Check for game over
     if (result === "D") {
       const headsLeft = targetPlayer.placeBoard
         .flat()
         .filter((cell) => cell === "H").length;
+      console.log(
+        `[Server] Player ${targetPlayer.playerIndex} heads left: ${headsLeft}`
+      );
       if (headsLeft === 0) {
         room.state = "finished";
         io.to(roomCode).emit("gameOver", shooter.playerIndex);
         console.log(
-          `[Server] Room ${roomCode}: GAME OVER. Winner is Player ${shooter.playerIndex}`
+          `[Server] Phòng ${roomCode}: TRÒ CHƠI KẾT THÚC. Thắng: ${shooter.playerIndex}`
         );
         delete rooms[roomCode];
         return;
       }
     }
 
-    // Switch turns
     room.currentTurnIndex = (room.currentTurnIndex + 1) % 2;
     io.to(roomCode).emit("newTurn", room.currentTurnIndex);
     console.log(
-      `[Server] Room ${roomCode}: New turn. Player ${room.currentTurnIndex}'s turn.`
+      `[Server] Phòng ${roomCode}: Chuyển lượt. Lượt tiếp theo: ${room.currentTurnIndex}.`
     );
   });
 
   socket.on("disconnect", () => {
-    console.log(`[Server] User disconnected: ${socket.id}`);
+    console.log(`[Server] Người dùng đã ngắt kết nối: ${socket.id}`);
     for (const roomCode in rooms) {
       const room = rooms[roomCode];
-      const player = room.players.find((p) => p.id === socket.id);
+      if (room && room.players) {
+        const playerIndex = room.players.findIndex((p) => p.id === socket.id);
 
-      if (player) {
-        console.log(`[Server] Player ${socket.id} left room ${roomCode}.`);
-
-        // --- CẢI TIẾN: Dọn dẹp timer và phòng ---
-        if (room.placementTimer) {
-          clearTimeout(room.placementTimer);
-          room.placementTimer = null;
+        if (playerIndex !== -1) {
           console.log(
-            `[Server] Cleared placement timer for room ${roomCode} due to disconnect.`
+            `[Server] Phòng ${roomCode}: Người chơi ${socket.id} thoát.`
           );
+          io.to(roomCode).emit("opponentLeft");
+          if (room.placementTimer) {
+            clearTimeout(room.placementTimer);
+            room.placementTimer = null;
+            console.log(
+              `[Server] Phòng ${roomCode}: Đã xóa placement timer do người chơi thoát.`
+            );
+          }
+          delete rooms[roomCode];
+          console.log(`[Server] Đã xóa phòng ${roomCode} do người chơi thoát.`);
+          return;
         }
-
-        // Thông báo cho người chơi còn lại và xóa phòng
-        socket.to(roomCode).emit("opponentLeft");
-        delete rooms[roomCode];
-        console.log(`[Server] Deleted room ${roomCode}.`);
-        break;
       }
     }
   });
@@ -359,5 +402,5 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`[Server] Server is listening on port ${PORT}`);
+  console.log(`[Server] Server đang chạy trên cổng ${PORT}`);
 });
