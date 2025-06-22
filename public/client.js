@@ -93,20 +93,28 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   });
 
+  // ========== FIXED CODE BLOCK ==========
   socket.on("gameStart", (data) => {
-    // Receive data object with roomCode
+    // FIX: Gán playerIndex cho người chơi tham gia phòng.
+    // Người tạo phòng (playerIndex: 0) đã được set index từ "roomCreated".
+    // Người tham gia phòng (playerIndex ban đầu là -1) sẽ được set index tại đây.
+    if (state.playerIndex === -1) {
+      state.playerIndex = 1;
+    }
+
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
     state.phase = "PLACE";
-    state.roomCode = data.roomCode; // --- FIX: Set roomCode for joining player ---
+    state.roomCode = data.roomCode;
     initGameBoards();
     updateUI();
-    console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
+    console.log(`[Client] Received 'gameStart'. Transitioning to PLACE phase. My player index is: ${state.playerIndex}`);
     console.log(
       "[Client] Current client state after gameStart:",
       JSON.parse(JSON.stringify(state))
     );
   });
+  // =====================================
 
   socket.on("error", (message) => {
     console.error(`[Client] Received error from server: ${message}`);
@@ -209,10 +217,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Emitted 'planesPlaced'. Transitioned to WAITING phase."
     );
-    console.log(
-      "[Client] Current client state after planesPlaced:",
-      JSON.parse(JSON.stringify(state))
-    );
   });
 
   dom.transition.button.addEventListener("click", () => {
@@ -257,7 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
       } else {
         console.log(
-          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
+          `[Client] Cell [${r}, ${c}] already shot. Cannot shoot again.`
         );
       }
     } else if (state.phase === "SHOOT" && !state.isMyTurn) {
@@ -333,21 +337,13 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(
       "[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase."
     );
-    console.log(
-      "[Client] Current client state after shootingPhaseStart:",
-      JSON.parse(JSON.stringify(state))
-    );
   });
 
   socket.on("newTurn", (turnIndex) => {
     state.isMyTurn = state.playerIndex === turnIndex;
     updateUI();
     console.log(
-      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
-    );
-    console.log(
-      "[Client] Current client state after newTurn:",
-      JSON.parse(JSON.stringify(state))
+      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (My Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
     );
   });
 
@@ -499,10 +495,6 @@ document.addEventListener("DOMContentLoaded", () => {
         infoMessage = "";
     }
     updateInfo(infoMessage);
-
-    console.log(
-      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}, Room Code: ${state.roomCode}`
-    );
   }
 
   // --- INITIALIZE GAME ---
