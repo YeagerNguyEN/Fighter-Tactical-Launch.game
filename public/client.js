@@ -1,4 +1,3 @@
-// client.js
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
 
@@ -16,7 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
     rotateButton: document.getElementById("rotate-button"),
     readyButton: document.getElementById("ready-button"),
     controlsArea: document.getElementById("controls-area"),
-    placementTimerDisplay: document.getElementById("placement-timer"),
     transition: {
       overlay: document.getElementById("transition-overlay"),
       title: document.getElementById("transition-title"),
@@ -43,7 +41,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- GAME STATE ---
   let state;
-  let placementCountdownInterval = null;
 
   function resetGame() {
     state = {
@@ -61,59 +58,30 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.game.style.display = "none";
     dom.roomCodeDisplay.textContent = "";
     dom.roomCodeInput.value = "";
-
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
-      placementCountdownInterval = null;
-    }
-    dom.placementTimerDisplay.classList.add("hidden");
-    dom.transition.overlay.classList.add("hidden");
-    dom.transition.overlay.classList.remove("flex");
-    console.log("[Client] Game state reset to LOBBY.");
   }
 
   // --- LOBBY LOGIC ---
-  dom.createRoomBtn.addEventListener("click", () => {
-    socket.emit("createRoom");
-    console.log("[Client] Emitted 'createRoom'.");
-  });
+  dom.createRoomBtn.addEventListener("click", () => socket.emit("createRoom"));
   dom.joinRoomBtn.addEventListener("click", () => {
     const roomCode = dom.roomCodeInput.value.toUpperCase();
-    if (roomCode) {
-      socket.emit("joinRoom", roomCode);
-      console.log(`[Client] Emitted 'joinRoom' with code: ${roomCode}.`);
-    }
+    if (roomCode) socket.emit("joinRoom", roomCode);
   });
 
   socket.on("roomCreated", (roomCode) => {
-    state.roomCode = roomCode; // Player 0's roomCode is set here
+    state.roomCode = roomCode;
     state.playerIndex = 0;
     dom.roomCodeDisplay.textContent = `Mã phòng: ${roomCode}. Đang chờ đối thủ...`;
-    console.log(
-      `[Client] Received 'roomCreated'. Room Code: ${roomCode}, Player Index: ${state.playerIndex}.`
-    );
   });
 
-  socket.on("gameStart", (data) => {
-    // Receive data object with roomCode and playerIndex
+  socket.on("gameStart", () => {
     dom.lobby.style.display = "none";
     dom.game.style.display = "flex";
     state.phase = "PLACE";
-    state.roomCode = data.roomCode;
-    state.playerIndex = data.playerIndex; // --- FIX: Set playerIndex for joining player ---
     initGameBoards();
     updateUI();
-    console.log("[Client] Received 'gameStart'. Transitioning to PLACE phase.");
-    console.log(
-      "[Client] Current client state after gameStart:",
-      JSON.parse(JSON.stringify(state))
-    );
   });
 
-  socket.on("error", (message) => {
-    console.error(`[Client] Received error from server: ${message}`);
-    showTransition("Lỗi", message);
-  });
+  socket.on("error", (message) => showTransition("Lỗi", message));
 
   // --- BOARD CREATION ---
   function initGameBoards() {
@@ -136,7 +104,6 @@ document.addEventListener("DOMContentLoaded", () => {
     container.addEventListener("mouseover", handleCellHover);
     container.addEventListener("mouseout", handleCellMouseOut);
     container.addEventListener("click", handleCellClick);
-    console.log(`[Client] Board '${type}' created.`);
   }
 
   // --- GAME LOGIC & HELPERS ---
@@ -167,10 +134,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function placePlaneOnBoard(board, row, col, shape) {
-    board[row + shape[0][1]][col + shape[0][0]] = "H"; // Head
+    board[row + shape[0][1]][col + shape[0][0]] = "H";
     for (let i = 1; i < shape.length; i++) {
       const [dx, dy] = shape[i];
-      board[row + dy][col + dx] = "B"; // Body
+      board[row + dy][col + dx] = "B";
     }
   }
 
@@ -183,47 +150,22 @@ document.addEventListener("DOMContentLoaded", () => {
       clearPreview();
       drawPreview(r, c);
     }
-    console.log(
-      `[Client] Rotated plane. Current direction: ${state.currentDirection}.`
-    );
   });
 
   dom.readyButton.addEventListener("click", () => {
-    if (state.planesPlaced < PLANES_PER_PLAYER) {
-      updateInfo(`Bạn cần đặt đủ ${PLANES_PER_PLAYER} máy bay.`);
-      console.log(
-        `[Client] Ready button clicked but not enough planes placed (${state.planesPlaced}/${PLANES_PER_PLAYER}).`
-      );
-      return;
-    }
     state.phase = "WAITING";
     socket.emit("planesPlaced", {
       roomCode: state.roomCode,
       placeBoard: state.placeBoard,
     });
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
-      placementCountdownInterval = null;
-      dom.placementTimerDisplay.classList.add("hidden");
-      console.log("[Client] Placement timer cleared due to player ready.");
-    }
     updateUI();
-    console.log(
-      "[Client] Emitted 'planesPlaced'. Transitioned to WAITING phase."
-    );
-    console.log(
-      "[Client] Current client state after planesPlaced:",
-      JSON.parse(JSON.stringify(state))
-    );
   });
 
   dom.transition.button.addEventListener("click", () => {
-    console.log("[Client] Transition button clicked. Hiding overlay.");
     dom.transition.overlay.classList.add("hidden");
-    dom.transition.overlay.classList.remove("flex");
     if (state.phase === "GAMEOVER") {
       resetGame();
-      location.reload();
+      location.reload(); // Easiest way to reset everything
     }
   });
 
@@ -234,10 +176,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const c = parseInt(cell.dataset.col);
     const type = cell.dataset.type;
 
-    console.log(
-      `[Client] Cell clicked: [${r}, ${c}], type: ${type}, phase: ${state.phase}, isMyTurn: ${state.isMyTurn}`
-    );
-
     if (state.phase === "PLACE" && type === "place") {
       const shape = getRotatedShape(state.currentDirection);
       if (canPlacePlane(state.placeBoard, r, c, shape)) {
@@ -245,29 +183,13 @@ document.addEventListener("DOMContentLoaded", () => {
         state.planesPlaced++;
         clearPreview();
         updateUI();
-        console.log(
-          `[Client] Plane placed at [${r}, ${c}]. Planes placed: ${state.planesPlaced}.`
-        );
-      } else {
-        console.log(
-          `[Client] Cannot place plane at [${r}, ${c}]. Invalid position or occupied.`
-        );
       }
-    } else if (state.phase === "SHOOT" && type === "shoot" && state.isMyTurn) {
+    }
+
+    if (state.phase === "SHOOT" && type === "shoot" && state.isMyTurn) {
       if (state.shootBoard[r][c] === null) {
         socket.emit("shoot", { roomCode: state.roomCode, row: r, col: c });
-        console.log(`[Client] Emitted 'shoot' at [${r}, ${c}].`);
-      } else {
-        console.log(
-          `[Client] Cell [${r}, ${c}] already shot (on my shootBoard). Cannot shoot again.`
-        );
       }
-    } else if (state.phase === "SHOOT" && !state.isMyTurn) {
-      console.log("[Client] Cannot shoot: Not your turn.");
-    } else if (state.phase !== "SHOOT" && type === "shoot") {
-      console.log(
-        `[Client] Cannot shoot: Not in SHOOT phase (current phase: ${state.phase}).`
-      );
     }
   }
 
@@ -287,88 +209,35 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- SERVER EVENT HANDLERS ---
-  socket.on("placementTimerStarted", (timeLimit) => {
-    let timeLeft = Math.ceil(timeLimit / 1000);
-    dom.placementTimerDisplay.classList.remove("hidden");
-    dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
-
-    console.log(
-      `[Client] Received 'placementTimerStarted' with ${timeLeft} seconds.`
-    );
-
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
-    }
-
-    placementCountdownInterval = setInterval(() => {
-      timeLeft--;
-      dom.placementTimerDisplay.textContent = `Thời gian đặt: ${timeLeft}s`;
-      if (timeLeft <= 0) {
-        clearInterval(placementCountdownInterval);
-        placementCountdownInterval = null;
-        dom.placementTimerDisplay.classList.add("hidden");
-        console.log("[Client] Placement timer finished.");
-      }
-    }, 1000);
-  });
-
   socket.on("opponentReady", () => {
     showTransition(
       "Đối Thủ Đã Sẵn Sàng",
       "Đối thủ của bạn đã đặt xong máy bay. Hãy nhanh lên!"
     );
-    console.log("[Client] Received 'opponentReady'.");
   });
 
-  socket.on("shootingPhaseStart", () => {
+  socket.on("startShooting", (startingPlayerIndex) => {
     state.phase = "SHOOT";
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
-      placementCountdownInterval = null;
-    }
-    dom.placementTimerDisplay.classList.add("hidden");
+    state.isMyTurn = state.playerIndex === startingPlayerIndex;
     showTransition(
       "Trận Chiến Bắt Đầu!",
-      "Lượt bắn sẽ được quyết định ngay sau đây."
+      `Người chơi ${startingPlayerIndex + 1} sẽ bắn trước.`
     );
     updateUI();
-    console.log(
-      "[Client] Received 'shootingPhaseStart'. Transitioned to SHOOT phase."
-    );
-    console.log(
-      "[Client] Current client state after shootingPhaseStart:",
-      JSON.parse(JSON.stringify(state))
-    );
-  });
-
-  socket.on("newTurn", (turnIndex) => {
-    state.isMyTurn = state.playerIndex === turnIndex;
-    updateUI();
-    console.log(
-      `[Client] Received 'newTurn'. My turn: ${state.isMyTurn} (Player Index: ${state.playerIndex}, Turn Index from server: ${turnIndex}).`
-    );
-    console.log(
-      "[Client] Current client state after newTurn:",
-      JSON.parse(JSON.stringify(state))
-    );
   });
 
   socket.on("shotResult", ({ shooterIndex, row, col, result }) => {
     const isMyShot = shooterIndex === state.playerIndex;
+    state.isMyTurn = !isMyShot; // Đổi lượt
 
     if (isMyShot) {
+      // Mình bắn
       state.shootBoard[row][col] = result;
-      console.log(
-        `[Client] My shot at [${row}, ${col}] resulted in: ${result}.`
-      );
     } else {
+      // Đối thủ bắn vào bàn của mình
       state.placeBoard[row][col] = result;
-      console.log(
-        `[Client] Opponent shot at [${row}, ${col}] resulted in: ${result}.`
-      );
     }
     updateUI();
-    console.log(`[Client] Processed shotResult. Boards updated.`);
   });
 
   socket.on("gameOver", (winnerIndex) => {
@@ -379,7 +248,6 @@ document.addEventListener("DOMContentLoaded", () => {
         : "Bạn đã thua cuộc.";
     showTransition("TRÒ CHƠI KẾT THÚC", message, "Chơi Lại");
     updateUI();
-    console.log(`[Client] Received 'gameOver'. Winner Index: ${winnerIndex}.`);
   });
 
   socket.on("opponentLeft", () => {
@@ -391,13 +259,6 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       state.phase = "GAMEOVER";
     }
-    if (placementCountdownInterval) {
-      clearInterval(placementCountdownInterval);
-      placementCountdownInterval = null;
-      dom.placementTimerDisplay.classList.add("hidden");
-    }
-    updateUI();
-    console.log("[Client] Received 'opponentLeft'.");
   });
 
   // --- PREVIEW & UI ---
@@ -448,19 +309,18 @@ document.addEventListener("DOMContentLoaded", () => {
           `[data-row='${r}'][data-col='${c}']`
         );
         if (!cell) continue;
-        cell.className = "grid-cell";
-        cell.dataset.type = type;
+        cell.className = "grid-cell"; // Reset
         const val = boardData[r][c];
 
         if (type === "place") {
           if (val === "H") cell.classList.add("cell-head");
           else if (val === "B") cell.classList.add("cell-placed");
-          else if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I") cell.classList.add("cell-hit-body");
-          else if (val === "M") cell.classList.add("cell-miss");
+          else if (val === "D") cell.classList.add("cell-hit-head"); // Bị bắn
+          else if (val === "M") cell.classList.add("cell-miss"); // Bị bắn
         } else {
+          // shoot board
           if (val === "D") cell.classList.add("cell-hit-head");
-          else if (val === "I") cell.classList.add("cell-hit-body");
+          else if (val === "B") cell.classList.add("cell-hit-body");
           else if (val === "M") cell.classList.add("cell-miss");
         }
       }
@@ -474,37 +334,31 @@ document.addEventListener("DOMContentLoaded", () => {
     dom.controlsArea.style.display = state.phase === "PLACE" ? "flex" : "none";
     dom.readyButton.style.display =
       state.planesPlaced >= PLANES_PER_PLAYER ? "block" : "none";
-
+    dom.myPlaceBoard.style.cursor =
+      state.phase === "PLACE" ? "pointer" : "default";
     dom.opponentShootBoard.style.cursor =
-      state.phase === "SHOOT" && state.isMyTurn ? "crosshair" : "default";
+      state.phase === "SHOOT" && state.isMyTurn ? "pointer" : "default";
 
-    let infoMessage = "";
     switch (state.phase) {
-      case "LOBBY":
-        infoMessage = "Chờ người chơi hoặc tạo/tham gia phòng.";
-        break;
       case "PLACE":
-        infoMessage = `Hãy đặt máy bay ${state.planesPlaced}/${PLANES_PER_PLAYER}. Xoay và click để đặt.`;
+        updateInfo(
+          `Hãy đặt máy bay ${state.planesPlaced}/${PLANES_PER_PLAYER}`
+        );
         break;
       case "WAITING":
-        infoMessage = "Đang chờ đối thủ đặt máy bay...";
+        updateInfo("Đang chờ đối thủ đặt máy bay...");
         break;
       case "SHOOT":
-        infoMessage = state.isMyTurn
-          ? "Lượt của bạn! Hãy tấn công một ô trên bàn đối thủ."
-          : "Lượt của đối thủ. Xin chờ...";
+        updateInfo(
+          state.isMyTurn
+            ? "Lượt của bạn! Hãy tấn công."
+            : "Lượt của đối thủ. Xin chờ..."
+        );
         break;
       case "GAMEOVER":
-        infoMessage = "TRÒ CHƠI KẾT THÚC!";
+        updateInfo("TRÒ CHƠI KẾT THÚC!");
         break;
-      default:
-        infoMessage = "";
     }
-    updateInfo(infoMessage);
-
-    console.log(
-      `[Client] UI Updated. Phase: ${state.phase}, Is My Turn: ${state.isMyTurn}, Planes Placed: ${state.planesPlaced}, Room Code: ${state.roomCode}`
-    );
   }
 
   // --- INITIALIZE GAME ---
